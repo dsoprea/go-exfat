@@ -14,10 +14,16 @@ import (
 	"github.com/go-restruct/restruct"
 )
 
+// TOOD(dustin): !! Review what we're casting to int() and what we can switch to using uint64().
+
 const (
 	bootSectorHeaderSize        = 512
 	oemParametersSize           = 48 * 10
 	mainExtendedBootSectorCount = 8
+)
+
+var (
+	defaultEncoding = binary.LittleEndian
 )
 
 var (
@@ -33,8 +39,10 @@ type bootRegion struct {
 }
 
 type ExfatReader struct {
-	rs         io.ReadSeeker
-	bootRegion bootRegion
+	rs io.ReadSeeker
+
+	bootRegion        bootRegion
+	clusterHeapOffset int
 }
 
 func NewExfatReader(rs io.ReadSeeker) *ExfatReader {
@@ -60,7 +68,7 @@ func (er *ExfatReader) parseN(byteCount int, x interface{}) (err error) {
 	_, err = io.ReadFull(er.rs, raw)
 	log.PanicIf(err)
 
-	err = restruct.Unpack(raw, binary.LittleEndian, x)
+	err = restruct.Unpack(raw, defaultEncoding, x)
 	log.PanicIf(err)
 
 	return nil
@@ -431,7 +439,7 @@ func (er *ExfatReader) readExtendedBootSector(sectorSize int) (extendedBootCode 
 	// The valid value for this field is AA550000h. Any other value in this field invalidates its respective Main or Backup Extended Boot Sector. Implementations should verify the contents of this field prior to depending on any other field in its respective Extended Boot Sector.
 
 	extendedBootSignature := uint32(0)
-	err = binary.Read(er.rs, binary.LittleEndian, &extendedBootSignature)
+	err = binary.Read(er.rs, defaultEncoding, &extendedBootSignature)
 	log.PanicIf(err)
 
 	if extendedBootSignature != requiredExtendedBootSignature {
@@ -548,12 +556,41 @@ func (er *ExfatReader) readMainBootChecksum(sectorSize int) (err error) {
 }
 
 func (er *ExfatReader) getCurrentSector() (sector int, offset int) {
+
+	// TODO(dustin): Add test.
+
 	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
 	log.PanicIf(err)
 
 	currentOffset := int(currentOffsetRaw)
 
 	return currentOffset / er.bootRegion.sectorSize, currentOffset % er.bootRegion.sectorSize
+}
+
+func (er *ExfatReader) printCurrentSector() {
+
+	// TODO(dustin): Add test.
+
+	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
+	log.PanicIf(err)
+
+	currentOffset := int(currentOffsetRaw)
+
+	fmt.Printf("CURRENT SECTOR: (%d) (%d)\n", currentOffset/er.bootRegion.sectorSize, currentOffset%er.bootRegion.sectorSize)
+}
+
+func (er *ExfatReader) assertAlignedToSector() {
+
+	// TODO(dustin): Add test.
+
+	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
+	log.PanicIf(err)
+
+	currentOffset := int(currentOffsetRaw)
+
+	if currentOffset%er.bootRegion.sectorSize != 0 {
+		log.Panicf("not currently aligned to a sector: (%d) (%d)", currentOffset/er.bootRegion.sectorSize, currentOffset%er.bootRegion.sectorSize)
+	}
 }
 
 func (er *ExfatReader) parseBootRegion() (br bootRegion, err error) {
@@ -568,38 +605,21 @@ func (er *ExfatReader) parseBootRegion() (br bootRegion, err error) {
 		}
 	}()
 
-	// TODO(dustin): Add test.
-
-	// if er.sectorSize != 0 {
-	// 	currentSector, currentSectorOffset := er.getCurrentSector()
-	// 	fmt.Printf("BEFORE SECTOR HEAD: (%d) (%d)\n", currentSector, currentSectorOffset)
-	// }
+	// TODO(dustin): !! Add test.
 
 	bsh, sectorSize, err := er.readBootSectorHead()
 	log.PanicIf(err)
-
-	// currentSector, currentSectorOffset := er.getCurrentSector()
-	// fmt.Printf("BEFORE EBS: (%d) (%d)\n", currentSector, currentSectorOffset)
 
 	// We don't care about these (for now, at least).
 	_, err = er.readExtendedBootSectors(sectorSize)
 	log.PanicIf(err)
 
-	// currentSector, currentSectorOffset = er.getCurrentSector()
-	// fmt.Printf("BEFORE OEM-PARAMETERS: (%d) (%d)\n", currentSector, currentSectorOffset)
-
 	// We don't care about these (for now, at least).
 	_, err = er.readOemParameters(sectorSize)
 	log.PanicIf(err)
 
-	// currentSector, currentSectorOffset = er.getCurrentSector()
-	// fmt.Printf("BEFORE MAIN-RESERVED: (%d) (%d)\n", currentSector, currentSectorOffset)
-
 	err = er.readMainReserved(sectorSize)
 	log.PanicIf(err)
-
-	// currentSector, currentSectorOffset = er.getCurrentSector()
-	// fmt.Printf("BEFORE MAIN BOOT CHECKSUM: (%d) (%d)\n", currentSector, currentSectorOffset)
 
 	err = er.readMainBootChecksum(sectorSize)
 	log.PanicIf(err)
@@ -624,12 +644,189 @@ func (er *ExfatReader) selectBootRegion(bootRegionMain, bootRegionBackup bootReg
 		}
 	}()
 
-	// TODO(dustin): Add test.
+	// TODO(dustin): !! Add test.
 
 	// We currently always elect the main region.
 	er.bootRegion = bootRegionMain
 
 	// TODO(dustin): Add validation logic to select the backup region if the main region is no good.
+
+	return nil
+}
+
+type MappedCluster uint32
+
+func (mc MappedCluster) IsBad() bool {
+	return mc == 0xfffffff7
+}
+
+func (mc MappedCluster) IsLast() bool {
+	return mc == 0xffffffff
+}
+
+type Fat []MappedCluster
+
+func (er *ExfatReader) parseFat() (fat Fat, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	// TODO(dustin): !! Add test
+
+	er.assertAlignedToSector()
+
+	// This field is mandatory and Section 4.1.1 defines its contents.
+	//
+	// The FatEntry[0] field shall describe the media type in the first byte (the lowest order byte) and shall contain FFh in the remaining three bytes.
+	//
+	// The media type (the first byte) should be F8h.
+
+	mediaTypeRaw := uint32(0)
+	err = binary.Read(er.rs, defaultEncoding, &mediaTypeRaw)
+	log.PanicIf(err)
+
+	mediaType := mediaTypeRaw & 0xff
+
+	if mediaType != 0xf8 {
+		log.Panicf("media-type not correct: (%08x) -> (%02x)", mediaTypeRaw, mediaType)
+	}
+
+	// This field is mandatory and Section 4.1.2 defines its contents.
+	//
+	// The FatEntry[1] field only exists due to historical precedence and does not describe anything of interest.
+	//
+	// The valid value for this field is FFFFFFFFh. Implementations shall initialize this field to its prescribed value and should not use this field for any purpose. Implementations should not interpret this field and shall preserve its contents across operations which modify surrounding fields.
+
+	value := uint32(0)
+	err = binary.Read(er.rs, defaultEncoding, &value)
+	log.PanicIf(err)
+
+	if value != 0xffffffff {
+		log.Panicf("second fat-entry has unexpected value: (%08x)", value)
+	}
+
+	totalFatSize := er.bootRegion.bsh.FatLength * uint32(er.bootRegion.sectorSize)
+
+	// Includes the two uint32s above.
+	actualFatSize := ((er.bootRegion.bsh.ClusterCount + 1) * 4)
+
+	excessSize := totalFatSize - actualFatSize
+
+	// This field is mandatory and Section 4.1.3 defines its contents.
+	//
+	// ClusterCount + 1 can never exceed FFFFFFF6h.
+	//
+	// Note: the Main and Backup Boot Sectors both contain the ClusterCount field.
+	//
+	// Each FatEntry field in this array shall represent a cluster in the Cluster Heap. FatEntry[2] represents the first cluster in the Cluster Heap and FatEntry[ClusterCount+1] represents the last cluster in the Cluster Heap.
+	//
+	// The valid range of values for these fields shall be:
+	//
+	// Between 2 and ClusterCount + 1, inclusively, which points to the next FatEntry in the given cluster chain; the given FatEntry shall not point to any FatEntry which precedes it in the given cluster chain
+	//
+	// Exactly FFFFFFF7h, which marks the given FatEntry's corresponding cluster as "bad"
+	//
+	// Exactly FFFFFFFFh, which marks the given FatEntry's corresponding cluster as the last cluster of a cluster chain; this is the only valid value for the last FatEntry of any given cluster chain
+
+	entryCount := er.bootRegion.bsh.ClusterCount - 1
+
+	fat = make(Fat, entryCount)
+	for i := uint32(0); i < entryCount; i++ {
+		err := binary.Read(er.rs, defaultEncoding, &fat[i])
+		log.PanicIf(err)
+	}
+
+	excess := make([]byte, excessSize)
+
+	_, err = io.ReadFull(er.rs, excess)
+	log.PanicIf(err)
+
+	return fat, nil
+}
+
+func (er *ExfatReader) parseFats() (fats []Fat, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	emptyBootRegion := bootRegion{}
+	if er.bootRegion == emptyBootRegion {
+		log.Panicf("boot-sectors not loaded yet")
+	}
+
+	// This sub-region is mandatory and its contents, if any, are undefined.
+	//
+	// Note: the Main and Backup Boot Sectors both contain the FatOffset field.
+
+	fatAlignment := make([]byte, (int(er.bootRegion.bsh.FatOffset)-24)*er.bootRegion.sectorSize)
+
+	_, err = io.ReadFull(er.rs, fatAlignment)
+	log.PanicIf(err)
+
+	// This sub-region is mandatory and Section 4.1 defines its contents.
+	//
+	// Note: the Main and Backup Boot Sectors both contain the FatOffset and FatLength fields.
+
+	fats = make([]Fat, er.bootRegion.bsh.NumberOfFats)
+	for i := 0; i < int(er.bootRegion.bsh.NumberOfFats); i++ {
+		fat, err := er.parseFat()
+		log.PanicIf(err)
+
+		fats[i] = fat
+	}
+
+	return fats, nil
+}
+
+func (er *ExfatReader) setClusterHeapOffset() (err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	// TODO(dustin): !! Add test.
+
+	alignmentSectors := er.bootRegion.bsh.ClusterHeapOffset - (er.bootRegion.bsh.FatOffset + er.bootRegion.bsh.FatLength*uint32(er.bootRegion.bsh.NumberOfFats))
+	alignmentByteCount := alignmentSectors * uint32(er.bootRegion.sectorSize)
+
+	alignmentBytes := make([]byte, alignmentByteCount)
+
+	_, err = io.ReadFull(er.rs, alignmentBytes)
+	log.PanicIf(err)
+
+	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
+	log.PanicIf(err)
+
+	clusterHeapOffset := int(currentOffsetRaw)
+
+	currentSectorNumber := clusterHeapOffset / er.bootRegion.sectorSize
+	remainder := clusterHeapOffset % er.bootRegion.sectorSize
+
+	if uint32(currentSectorNumber) != er.bootRegion.bsh.ClusterHeapOffset || remainder != 0 {
+		log.Panicf("calculated cluster offset does not match expected cluster offset: (%d) (%d) != (%d)", currentSectorNumber, remainder, er.bootRegion.bsh.ClusterHeapOffset)
+	}
+
+	er.clusterHeapOffset = clusterHeapOffset
 
 	return nil
 }
@@ -653,6 +850,14 @@ func (er *ExfatReader) Parse() (err error) {
 	log.PanicIf(err)
 
 	er.selectBootRegion(bootRegionMain, bootRegionBackup)
+
+	fats, err := er.parseFats()
+	log.PanicIf(err)
+
+	err = er.setClusterHeapOffset()
+	log.PanicIf(err)
+
+	fats = fats
 
 	return nil
 }

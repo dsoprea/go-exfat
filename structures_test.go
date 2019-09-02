@@ -32,6 +32,10 @@ func TestExfatReader_readBootSectorHead(t *testing.T) {
 		t.Fatalf("Volume serial-number not correct: 0x%x", bsh.VolumeSerialNumber)
 	} else if sectorSize != 512 {
 		t.Fatalf("Sector-size not correct: (%d)", sectorSize)
+	} else if bsh.ClusterCount != 239 {
+		t.Fatalf("ClusterCount not correct: (%d)", bsh.ClusterCount)
+	} else if bsh.NumberOfFats != 1 {
+		t.Fatalf("NumberOfFats not correct: (%d)", bsh.NumberOfFats)
 	}
 }
 
@@ -95,7 +99,7 @@ func TestBootSectorHeader_Dump(t *testing.T) {
 	bsh.Dump()
 }
 
-func TestBootSectorHeader_readOemParameters(t *testing.T) {
+func TestExfatReader_readOemParameters(t *testing.T) {
 	f, er := getTestFileAndParser()
 
 	defer f.Close()
@@ -126,7 +130,7 @@ func TestBootSectorHeader_readOemParameters(t *testing.T) {
 	}
 }
 
-func TestBootSectorHeader_parseBootRegion(t *testing.T) {
+func TestExfatReader_parseBootRegion(t *testing.T) {
 	f, er := getTestFileAndParser()
 
 	defer f.Close()
@@ -144,7 +148,26 @@ func TestBootSectorHeader_parseBootRegion(t *testing.T) {
 	}
 }
 
-func TestBootSectorHeader_Parse(t *testing.T) {
+func TestExfatReader_parseFats(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	bootRegionMain, err := er.parseBootRegion()
+	log.PanicIf(err)
+
+	_, err = er.parseBootRegion()
+	log.PanicIf(err)
+
+	er.bootRegion = bootRegionMain
+
+	fats, err := er.parseFats()
+	log.PanicIf(err)
+
+	fats = fats
+}
+
+func TestExfatReader_Parse(t *testing.T) {
 	f, er := getTestFileAndParser()
 
 	defer f.Close()
