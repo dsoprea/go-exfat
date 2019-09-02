@@ -27,9 +27,14 @@ var (
 	requiredExtendedBootSignature = uint32(0xaa550000)
 )
 
+type bootRegion struct {
+	bsh        BootSectorHeader
+	sectorSize int
+}
+
 type ExfatReader struct {
 	rs         io.ReadSeeker
-	sectorSize int
+	bootRegion bootRegion
 }
 
 func NewExfatReader(rs io.ReadSeeker) *ExfatReader {
@@ -334,10 +339,10 @@ func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("FileSystemRevision: (0x%02x) (0x%02x)\n", bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
 
 	fmt.Printf("VolumeFlags: (%d)\n", bsh.VolumeFlags)
-	fmt.Printf("  VolumeFlagActiveFat: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0)
-	fmt.Printf("  VolumeFlagVolumeDirty: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagVolumeDirty > 0)
-	fmt.Printf("  VolumeFlagsMediaFailure: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagsMediaFailure > 0)
-	fmt.Printf("  VolumeFlagClearToZero: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagClearToZero > 0)
+	fmt.Printf("- VolumeFlagActiveFat: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0)
+	fmt.Printf("- VolumeFlagVolumeDirty: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagVolumeDirty > 0)
+	fmt.Printf("- VolumeFlagsMediaFailure: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagsMediaFailure > 0)
+	fmt.Printf("- VolumeFlagClearToZero: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagClearToZero > 0)
 
 	fmt.Printf("BytesPerSectorShift: (%d)\n", bsh.BytesPerSectorShift)
 	fmt.Printf("SectorsPerClusterShift: (%d)\n", bsh.SectorsPerClusterShift)
@@ -346,7 +351,11 @@ func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("PercentInUse: (%d)\n", bsh.PercentInUse)
 }
 
-func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, err error) {
+func (bsh BootSectorHeader) String() string {
+	return fmt.Sprintf("BootSector<SN=(%08x) REVISION=(%02x)-(%02x)>", bsh.VolumeSerialNumber, bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
+}
+
+func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, sectorSize int, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -376,7 +385,7 @@ func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, err error) {
 	}
 
 	// Forward through the excess bytes.
-	sectorSize := int(math.Pow(2, float64(bsh.BytesPerSectorShift)))
+	sectorSize = int(math.Pow(2, float64(bsh.BytesPerSectorShift)))
 	excessByteCount := sectorSize - 512
 
 	if excessByteCount != 0 {
@@ -384,14 +393,12 @@ func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, err error) {
 		log.PanicIf(err)
 	}
 
-	er.sectorSize = sectorSize
-
-	return bsh, nil
+	return bsh, sectorSize, nil
 }
 
 type ExtendedBootCode []byte
 
-func (er *ExfatReader) readExtendedBootSector() (extendedBootCode ExtendedBootCode, err error) {
+func (er *ExfatReader) readExtendedBootSector(sectorSize int) (extendedBootCode ExtendedBootCode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -409,7 +416,7 @@ func (er *ExfatReader) readExtendedBootSector() (extendedBootCode ExtendedBootCo
 	//
 	// The ExtendedBootCode field shall contain boot-strapping instructions. Implementations may populate this field with the CPU instructions necessary for boot-strapping a computer system. Implementations which don't provide boot-strapping instructions shall initialize each byte in this field to 00h as part of their format operation.
 
-	extendedBootCodeSize := er.sectorSize - 4
+	extendedBootCodeSize := sectorSize - 4
 	extendedBootCode = make(ExtendedBootCode, extendedBootCodeSize)
 
 	_, err = io.ReadFull(er.rs, extendedBootCode)
@@ -434,7 +441,7 @@ func (er *ExfatReader) readExtendedBootSector() (extendedBootCode ExtendedBootCo
 	return extendedBootCode, nil
 }
 
-func (er *ExfatReader) readExtendedBootSectors() (extendedBootCodeList [mainExtendedBootSectorCount]ExtendedBootCode, err error) {
+func (er *ExfatReader) readExtendedBootSectors(sectorSize int) (extendedBootCodeList [mainExtendedBootSectorCount]ExtendedBootCode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -447,7 +454,7 @@ func (er *ExfatReader) readExtendedBootSectors() (extendedBootCodeList [mainExte
 	}()
 
 	for i := 0; i < mainExtendedBootSectorCount; i++ {
-		extendedBootCode, err := er.readExtendedBootSector()
+		extendedBootCode, err := er.readExtendedBootSector(sectorSize)
 		log.PanicIf(err)
 
 		extendedBootCodeList[i] = extendedBootCode
@@ -464,7 +471,7 @@ type OemParameters struct {
 	Parameters [10]OemParameter
 }
 
-func (er *ExfatReader) readOemParameters() (oemParameters OemParameters, err error) {
+func (er *ExfatReader) readOemParameters(sectorSize int) (oemParameters OemParameters, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -479,10 +486,18 @@ func (er *ExfatReader) readOemParameters() (oemParameters OemParameters, err err
 	err = er.parseN(oemParametersSize, &oemParameters)
 	log.PanicIf(err)
 
+	// Rad the remaining unused data of the sector.
+
+	remainder := sectorSize - 480
+	buffer := make([]byte, remainder)
+
+	_, err = io.ReadFull(er.rs, buffer)
+	log.PanicIf(err)
+
 	return oemParameters, nil
 }
 
-func (er *ExfatReader) readMainReserved() (err error) {
+func (er *ExfatReader) readMainReserved(sectorSize int) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -494,10 +509,127 @@ func (er *ExfatReader) readMainReserved() (err error) {
 		}
 	}()
 
-	buffer := make([]byte, er.sectorSize)
+	// TODO(dustin): !! Add test.
+
+	// This sub-region is mandatory and its contents are reserved.
+
+	buffer := make([]byte, sectorSize)
 
 	_, err = io.ReadFull(er.rs, buffer)
 	log.PanicIf(err)
+
+	return nil
+}
+
+func (er *ExfatReader) readMainBootChecksum(sectorSize int) (err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	// TODO(dustin): !! Add test.
+
+	// This sub-region is mandatory and Section 3.4 defines its contents.
+
+	buffer := make([]byte, sectorSize)
+
+	_, err = io.ReadFull(er.rs, buffer)
+	log.PanicIf(err)
+
+	// TODO(dustin): Return to this.
+
+	return nil
+}
+
+func (er *ExfatReader) getCurrentSector() (sector int, offset int) {
+	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
+	log.PanicIf(err)
+
+	currentOffset := int(currentOffsetRaw)
+
+	return currentOffset / er.bootRegion.sectorSize, currentOffset % er.bootRegion.sectorSize
+}
+
+func (er *ExfatReader) parseBootRegion() (br bootRegion, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	// TODO(dustin): Add test.
+
+	// if er.sectorSize != 0 {
+	// 	currentSector, currentSectorOffset := er.getCurrentSector()
+	// 	fmt.Printf("BEFORE SECTOR HEAD: (%d) (%d)\n", currentSector, currentSectorOffset)
+	// }
+
+	bsh, sectorSize, err := er.readBootSectorHead()
+	log.PanicIf(err)
+
+	// currentSector, currentSectorOffset := er.getCurrentSector()
+	// fmt.Printf("BEFORE EBS: (%d) (%d)\n", currentSector, currentSectorOffset)
+
+	// We don't care about these (for now, at least).
+	_, err = er.readExtendedBootSectors(sectorSize)
+	log.PanicIf(err)
+
+	// currentSector, currentSectorOffset = er.getCurrentSector()
+	// fmt.Printf("BEFORE OEM-PARAMETERS: (%d) (%d)\n", currentSector, currentSectorOffset)
+
+	// We don't care about these (for now, at least).
+	_, err = er.readOemParameters(sectorSize)
+	log.PanicIf(err)
+
+	// currentSector, currentSectorOffset = er.getCurrentSector()
+	// fmt.Printf("BEFORE MAIN-RESERVED: (%d) (%d)\n", currentSector, currentSectorOffset)
+
+	err = er.readMainReserved(sectorSize)
+	log.PanicIf(err)
+
+	// currentSector, currentSectorOffset = er.getCurrentSector()
+	// fmt.Printf("BEFORE MAIN BOOT CHECKSUM: (%d) (%d)\n", currentSector, currentSectorOffset)
+
+	err = er.readMainBootChecksum(sectorSize)
+	log.PanicIf(err)
+
+	br = bootRegion{
+		bsh:        bsh,
+		sectorSize: sectorSize,
+	}
+
+	return br, nil
+}
+
+func (er *ExfatReader) selectBootRegion(bootRegionMain, bootRegionBackup bootRegion) (err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	// TODO(dustin): Add test.
+
+	// We currently always elect the main region.
+	er.bootRegion = bootRegionMain
+
+	// TODO(dustin): Add validation logic to select the backup region if the main region is no good.
 
 	return nil
 }
@@ -514,22 +646,13 @@ func (er *ExfatReader) Parse() (err error) {
 		}
 	}()
 
-	bsh, err := er.readBootSectorHead()
+	bootRegionMain, err := er.parseBootRegion()
 	log.PanicIf(err)
 
-	// We don't care about these (for now, at least).
-	_, err = er.readExtendedBootSectors()
+	bootRegionBackup, err := er.parseBootRegion()
 	log.PanicIf(err)
 
-	// We don't care about these (for now, at least).
-	_, err = er.readOemParameters()
-	log.PanicIf(err)
-
-	err = er.readMainReserved()
-	log.PanicIf(err)
-
-	bsh = bsh
-	//bsh.Dump()
+	er.selectBootRegion(bootRegionMain, bootRegionBackup)
 
 	return nil
 }

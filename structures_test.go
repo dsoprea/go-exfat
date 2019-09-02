@@ -25,13 +25,13 @@ func TestExfatReader_readBootSectorHead(t *testing.T) {
 
 	defer f.Close()
 
-	bsh, err := er.readBootSectorHead()
+	bsh, sectorSize, err := er.readBootSectorHead()
 	log.PanicIf(err)
 
 	if bsh.VolumeSerialNumber != 0x3d51a058 {
 		t.Fatalf("Volume serial-number not correct: 0x%x", bsh.VolumeSerialNumber)
-	} else if er.sectorSize != 512 {
-		t.Fatalf("Sector-size not correct: (%d)", er.sectorSize)
+	} else if sectorSize != 512 {
+		t.Fatalf("Sector-size not correct: (%d)", sectorSize)
 	}
 }
 
@@ -40,10 +40,10 @@ func TestExfatReader_readExtendedBootSector(t *testing.T) {
 
 	defer f.Close()
 
-	_, err := er.readBootSectorHead()
+	_, sectorSize, err := er.readBootSectorHead()
 	log.PanicIf(err)
 
-	extendedBootCode, err := er.readExtendedBootSector()
+	extendedBootCode, err := er.readExtendedBootSector(sectorSize)
 	log.PanicIf(err)
 
 	nullExtendedBootCode := make(ExtendedBootCode, 508)
@@ -66,10 +66,10 @@ func TestExfatReader_readExtendedBootSectors(t *testing.T) {
 
 	defer f.Close()
 
-	_, err := er.readBootSectorHead()
+	_, sectorSize, err := er.readBootSectorHead()
 	log.PanicIf(err)
 
-	extendedBootCodeList, err := er.readExtendedBootSectors()
+	extendedBootCodeList, err := er.readExtendedBootSectors(sectorSize)
 	log.PanicIf(err)
 
 	var expectedExtendedBootCodeList [mainExtendedBootSectorCount]ExtendedBootCode
@@ -89,19 +89,10 @@ func TestBootSectorHeader_Dump(t *testing.T) {
 
 	defer f.Close()
 
-	bsh, err := er.readBootSectorHead()
+	bsh, _, err := er.readBootSectorHead()
 	log.PanicIf(err)
 
 	bsh.Dump()
-}
-
-func TestBootSectorHeader_Parse(t *testing.T) {
-	f, er := getTestFileAndParser()
-
-	defer f.Close()
-
-	err := er.Parse()
-	log.PanicIf(err)
 }
 
 func TestBootSectorHeader_readOemParameters(t *testing.T) {
@@ -109,13 +100,13 @@ func TestBootSectorHeader_readOemParameters(t *testing.T) {
 
 	defer f.Close()
 
-	_, err := er.readBootSectorHead()
+	_, sectorSize, err := er.readBootSectorHead()
 	log.PanicIf(err)
 
-	_, err = er.readExtendedBootSectors()
+	_, err = er.readExtendedBootSectors(sectorSize)
 	log.PanicIf(err)
 
-	oemParameters, err := er.readOemParameters()
+	oemParameters, err := er.readOemParameters(sectorSize)
 	log.PanicIf(err)
 
 	if len(oemParameters.Parameters) != 10 {
@@ -133,4 +124,31 @@ func TestBootSectorHeader_readOemParameters(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestBootSectorHeader_parseBootRegion(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	br, err := er.parseBootRegion()
+	log.PanicIf(err)
+
+	if br.sectorSize != 512 {
+		t.Fatalf("Sector-size not correct: (%d)", br.sectorSize)
+	}
+
+	description := br.bsh.String()
+	if description != "BootSector<SN=(3d51a058) REVISION=(00)-(01)>" {
+		t.Fatalf("Boot-sector description not correct: %s", description)
+	}
+}
+
+func TestBootSectorHeader_Parse(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
 }
