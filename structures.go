@@ -4,17 +4,62 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
+	"os"
+	"reflect"
 
 	"encoding/binary"
 
-	"github.com/lunixbochs/struc"
+	"github.com/dsoprea/go-logging"
+	"github.com/go-restruct/restruct"
+)
+
+const (
+	bootSectorHeaderSize        = 512
+	oemParametersSize           = 48 * 10
+	mainExtendedBootSectorCount = 8
 )
 
 var (
-	requiredJumpBootSignature = []byte{0xeb, 0x76, 0x90}
-	requiredFileSystemName    = []byte("EXFAT   ")
-	requireBootSignature      = uint16(0xaa55)
+	requiredJumpBootSignature     = []byte{0xeb, 0x76, 0x90}
+	requiredFileSystemName        = []byte("EXFAT   ")
+	requiredBootSignature         = uint16(0xaa55)
+	requiredExtendedBootSignature = uint32(0xaa550000)
 )
+
+type ExfatReader struct {
+	rs         io.ReadSeeker
+	sectorSize int
+}
+
+func NewExfatReader(rs io.ReadSeeker) *ExfatReader {
+	return &ExfatReader{
+		rs: rs,
+	}
+}
+
+func (er *ExfatReader) parseN(byteCount int, x interface{}) (err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	raw := make([]byte, byteCount)
+
+	_, err = io.ReadFull(er.rs, raw)
+	log.PanicIf(err)
+
+	err = restruct.Unpack(raw, binary.LittleEndian, x)
+	log.PanicIf(err)
+
+	return nil
+}
 
 type BootSectorHeader struct {
 	// This field is mandatory and Section 3.1.1 defines its contents.
@@ -277,39 +322,6 @@ const (
 	VolumeFlagClearToZero = 8
 )
 
-func NewBootSectorHeaderFromReader(r io.Reader) (bsh BootSectorHeader, err error) {
-	defer func() {
-		if errRaw := recover(); errRaw != nil {
-			err = errRaw.(error)
-		}
-	}()
-
-	o := &struc.Options{
-		Order: binary.LittleEndian,
-	}
-
-	err = struc.UnpackWithOptions(r, &bsh, o)
-	if err != nil {
-		panic(err)
-	}
-
-	if bytes.Equal(bsh.JumpBoot[:], requiredJumpBootSignature) != true {
-		panic(fmt.Errorf("jump-boot value not correct: %x", bsh.JumpBoot[:]))
-	} else if bytes.Equal(bsh.FileSystemName[:], requiredFileSystemName) != true {
-		panic(fmt.Errorf("filesystem name not correct: %x [%s]", bsh.FileSystemName, string(bsh.FileSystemName[:])))
-	} else if bsh.BootSignature != requireBootSignature {
-		panic(fmt.Errorf("boot-signature not correct: %x", bsh.BootSignature))
-	}
-
-	for _, c := range bsh.MustBeZero {
-		if c != 0 {
-			panic(fmt.Errorf("must-be-zero field not all zeros"))
-		}
-	}
-
-	return bsh, nil
-}
-
 func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("PartitionOffset: (%d)\n", bsh.PartitionOffset)
 	fmt.Printf("VolumeLength: (%d)\n", bsh.VolumeLength)
@@ -321,7 +333,6 @@ func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("VolumeSerialNumber: (0x%08x)\n", bsh.VolumeSerialNumber)
 	fmt.Printf("FileSystemRevision: (0x%02x) (0x%02x)\n", bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
 
-	// TODO(dustin): VolumeFlags subject to endianness?
 	fmt.Printf("VolumeFlags: (%d)\n", bsh.VolumeFlags)
 	fmt.Printf("  VolumeFlagActiveFat: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0)
 	fmt.Printf("  VolumeFlagVolumeDirty: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagVolumeDirty > 0)
@@ -333,4 +344,192 @@ func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("NumberOfFats: (%d)\n", bsh.NumberOfFats)
 	fmt.Printf("DriveSelect: (%d)\n", bsh.DriveSelect)
 	fmt.Printf("PercentInUse: (%d)\n", bsh.PercentInUse)
+}
+
+func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	err = er.parseN(bootSectorHeaderSize, &bsh)
+	log.PanicIf(err)
+
+	if bytes.Equal(bsh.JumpBoot[:], requiredJumpBootSignature) != true {
+		log.Panicf("jump-boot value not correct: %x", bsh.JumpBoot[:])
+	} else if bytes.Equal(bsh.FileSystemName[:], requiredFileSystemName) != true {
+		log.Panicf("filesystem name not correct: %x [%s]", bsh.FileSystemName, string(bsh.FileSystemName[:]))
+	} else if bsh.BootSignature != requiredBootSignature {
+		log.Panicf("boot-signature not correct: %x", bsh.BootSignature)
+	}
+
+	for _, c := range bsh.MustBeZero {
+		if c != 0 {
+			log.Panicf("must-be-zero field not all zeros")
+		}
+	}
+
+	// Forward through the excess bytes.
+	sectorSize := int(math.Pow(2, float64(bsh.BytesPerSectorShift)))
+	excessByteCount := sectorSize - 512
+
+	if excessByteCount != 0 {
+		_, err := er.rs.Seek(int64(excessByteCount), os.SEEK_CUR)
+		log.PanicIf(err)
+	}
+
+	er.sectorSize = sectorSize
+
+	return bsh, nil
+}
+
+type ExtendedBootCode []byte
+
+func (er *ExfatReader) readExtendedBootSector() (extendedBootCode ExtendedBootCode, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	// This field is mandatory and Section 3.2.1 defines its contents.
+	//
+	// Note: the Main and Backup Boot Sectors both contain the BytesPerSectorShift field.
+	//
+	// The ExtendedBootCode field shall contain boot-strapping instructions. Implementations may populate this field with the CPU instructions necessary for boot-strapping a computer system. Implementations which don't provide boot-strapping instructions shall initialize each byte in this field to 00h as part of their format operation.
+
+	extendedBootCodeSize := er.sectorSize - 4
+	extendedBootCode = make(ExtendedBootCode, extendedBootCodeSize)
+
+	_, err = io.ReadFull(er.rs, extendedBootCode)
+	log.PanicIf(err)
+
+	// This field is mandatory and Section 3.2.2 defines its contents.
+	//
+	// Note: the Main and Backup Boot Sectors both contain the BytesPerSectorShift field.
+	//
+	// The ExtendedBootSignature field shall describe whether the intent of given sector is for it to be an Extended Boot Sector or not.
+	//
+	// The valid value for this field is AA550000h. Any other value in this field invalidates its respective Main or Backup Extended Boot Sector. Implementations should verify the contents of this field prior to depending on any other field in its respective Extended Boot Sector.
+
+	extendedBootSignature := uint32(0)
+	err = binary.Read(er.rs, binary.LittleEndian, &extendedBootSignature)
+	log.PanicIf(err)
+
+	if extendedBootSignature != requiredExtendedBootSignature {
+		panic(fmt.Errorf("extended boot-signature not correct: %x", extendedBootSignature))
+	}
+
+	return extendedBootCode, nil
+}
+
+func (er *ExfatReader) readExtendedBootSectors() (extendedBootCodeList [mainExtendedBootSectorCount]ExtendedBootCode, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	for i := 0; i < mainExtendedBootSectorCount; i++ {
+		extendedBootCode, err := er.readExtendedBootSector()
+		log.PanicIf(err)
+
+		extendedBootCodeList[i] = extendedBootCode
+	}
+
+	return extendedBootCodeList, nil
+}
+
+type OemParameter struct {
+	Parameter [48]byte
+}
+
+type OemParameters struct {
+	Parameters [10]OemParameter
+}
+
+func (er *ExfatReader) readOemParameters() (oemParameters OemParameters, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	err = er.parseN(oemParametersSize, &oemParameters)
+	log.PanicIf(err)
+
+	return oemParameters, nil
+}
+
+func (er *ExfatReader) readMainReserved() (err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	buffer := make([]byte, er.sectorSize)
+
+	_, err = io.ReadFull(er.rs, buffer)
+	log.PanicIf(err)
+
+	return nil
+}
+
+func (er *ExfatReader) Parse() (err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	bsh, err := er.readBootSectorHead()
+	log.PanicIf(err)
+
+	// We don't care about these (for now, at least).
+	_, err = er.readExtendedBootSectors()
+	log.PanicIf(err)
+
+	// We don't care about these (for now, at least).
+	_, err = er.readOemParameters()
+	log.PanicIf(err)
+
+	err = er.readMainReserved()
+	log.PanicIf(err)
+
+	bsh = bsh
+	//bsh.Dump()
+
+	return nil
 }
