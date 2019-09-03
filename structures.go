@@ -23,10 +23,6 @@ const (
 )
 
 var (
-	defaultEncoding = binary.LittleEndian
-)
-
-var (
 	requiredJumpBootSignature     = []byte{0xeb, 0x76, 0x90}
 	requiredFileSystemName        = []byte("EXFAT   ")
 	requiredBootSignature         = uint16(0xaa55)
@@ -274,9 +270,6 @@ type BootSectorHeader struct {
 	//
 	// The valid value for this field is AA55h. Any other value in this field invalidates its respective Boot Sector. Implementations should verify the contents of this field prior to depending on any other field in its respective Boot Sector.
 	BootSignature uint16
-
-	// TODO(dustin): !! Finish.
-	// ExcessSpace
 }
 
 type VolumeFlags int
@@ -345,6 +338,10 @@ func (bsh BootSectorHeader) UseSecondFat() bool {
 }
 
 func (bsh BootSectorHeader) Dump() {
+	fmt.Printf("Boot Sector Header\n")
+	fmt.Printf("==================\n")
+	fmt.Printf("\n")
+
 	fmt.Printf("PartitionOffset: (%d)\n", bsh.PartitionOffset)
 	fmt.Printf("VolumeLength: (%d)\n", bsh.VolumeLength)
 	fmt.Printf("FatOffset: (%d)\n", bsh.FatOffset)
@@ -354,6 +351,12 @@ func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("FirstClusterOfRootDirectory: (%d)\n", bsh.FirstClusterOfRootDirectory)
 	fmt.Printf("VolumeSerialNumber: (0x%08x)\n", bsh.VolumeSerialNumber)
 	fmt.Printf("FileSystemRevision: (0x%02x) (0x%02x)\n", bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
+	fmt.Printf("BytesPerSectorShift: (%d)\n", bsh.BytesPerSectorShift)
+	fmt.Printf("SectorsPerClusterShift: (%d)\n", bsh.SectorsPerClusterShift)
+	fmt.Printf("NumberOfFats: (%d)\n", bsh.NumberOfFats)
+	fmt.Printf("DriveSelect: (%d)\n", bsh.DriveSelect)
+	fmt.Printf("PercentInUse: (%d)\n", bsh.PercentInUse)
+	fmt.Printf("\n")
 
 	fmt.Printf("VolumeFlags: (%d)\n", bsh.VolumeFlags)
 	fmt.Printf("- VolumeFlagActiveFat: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0)
@@ -361,11 +364,7 @@ func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("- VolumeFlagsMediaFailure: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagsMediaFailure > 0)
 	fmt.Printf("- VolumeFlagClearToZero: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagClearToZero > 0)
 
-	fmt.Printf("BytesPerSectorShift: (%d)\n", bsh.BytesPerSectorShift)
-	fmt.Printf("SectorsPerClusterShift: (%d)\n", bsh.SectorsPerClusterShift)
-	fmt.Printf("NumberOfFats: (%d)\n", bsh.NumberOfFats)
-	fmt.Printf("DriveSelect: (%d)\n", bsh.DriveSelect)
-	fmt.Printf("PercentInUse: (%d)\n", bsh.PercentInUse)
+	fmt.Printf("\n")
 }
 
 func (bsh BootSectorHeader) String() string {
@@ -833,21 +832,31 @@ func (er *ExfatReader) FirstClusterOfRootDirectory() uint32 {
 }
 
 func (er *ExfatReader) GetCluster(clusterNumber uint32) *ExfatCluster {
-	ec := newExfatCluster(er, clusterNumber)
+	ec, err := newExfatCluster(er, clusterNumber)
+	log.PanicIf(err)
+
 	return ec
 }
 
-type ClusterVisitorFunc func(ec *ExfatCluster) (err error)
+type ClusterVisitorFunc func(ec *ExfatCluster) (doContinue bool, err error)
 
 // EnumerateClusters calls the given callback for each cluster in the chain
 // starting from the given cluster.
 func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb ClusterVisitorFunc) (err error) {
+	if startingClusterNumber < 2 {
+		log.Panicf("cluster can not be less than (2): (%d)", startingClusterNumber)
+	}
+
 	currentClusterNumber := startingClusterNumber
 	for {
 		ec := er.GetCluster(currentClusterNumber)
 
-		err := cb(ec)
+		doContinue, err := cb(ec)
 		log.PanicIf(err)
+
+		if doContinue == false {
+			break
+		}
 
 		if int(currentClusterNumber) >= len(er.activeFat) {
 			log.Panicf("cluster exceeds FAT bounds: (%d) >= (%d)", currentClusterNumber, len(er.activeFat))
@@ -964,18 +973,24 @@ type ExfatCluster struct {
 	clusterOffset     uint32
 }
 
-func newExfatCluster(er *ExfatReader, clusterNumber uint32) *ExfatCluster {
+func newExfatCluster(er *ExfatReader, clusterNumber uint32) (ec *ExfatCluster, err error) {
 
 	// TODO(dustin): !! Add test.
+
+	if clusterNumber == 0 {
+		log.Panicf("cluster-number can not be (0)")
+	}
 
 	sectorsPerCluster := er.SectorsPerCluster()
 	sectorSize := er.SectorSize()
 
 	clusterSize := sectorsPerCluster * sectorSize
 	clusterHeapOffset := er.bootRegion.bsh.ClusterHeapOffset * er.SectorSize()
-	clusterOffset := clusterHeapOffset + clusterSize*clusterNumber
 
-	return &ExfatCluster{
+	// Only clusters numbering (2) and above are stored on disk.
+	clusterOffset := clusterHeapOffset + clusterSize*(clusterNumber-2)
+
+	ec = &ExfatCluster{
 		er: er,
 
 		clusterNumber:     clusterNumber,
@@ -983,6 +998,8 @@ func newExfatCluster(er *ExfatReader, clusterNumber uint32) *ExfatCluster {
 		sectorsPerCluster: sectorsPerCluster,
 		clusterOffset:     clusterOffset,
 	}
+
+	return ec, nil
 }
 
 func (ec *ExfatCluster) ClusterNumber() uint32 {
@@ -1022,7 +1039,7 @@ func (ec *ExfatCluster) GetSectorByIndex(sectorIndex uint32) (data []byte, err e
 	return data, nil
 }
 
-type SectorVisitorFunc func(sectorNumber uint32, data []byte) (err error)
+type SectorVisitorFunc func(sectorNumber uint32, data []byte) (bool, error)
 
 func (ec *ExfatCluster) EnumerateSectors(cb SectorVisitorFunc) (err error) {
 	defer func() {
@@ -1042,8 +1059,12 @@ func (ec *ExfatCluster) EnumerateSectors(cb SectorVisitorFunc) (err error) {
 
 		sectorNumber := ec.er.bootRegion.bsh.ClusterHeapOffset + ec.clusterNumber + i
 
-		err = cb(sectorNumber, sectorData)
+		doContinue, err := cb(sectorNumber, sectorData)
 		log.PanicIf(err)
+
+		if doContinue == false {
+			break
+		}
 	}
 
 	return nil
