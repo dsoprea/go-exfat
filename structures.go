@@ -42,7 +42,7 @@ type ExfatReader struct {
 	rs io.ReadSeeker
 
 	bootRegion        bootRegion
-	clusterHeapOffset int
+	clusterHeapOffset uint32
 }
 
 func NewExfatReader(rs io.ReadSeeker) *ExfatReader {
@@ -555,41 +555,47 @@ func (er *ExfatReader) readMainBootChecksum(sectorSize int) (err error) {
 	return nil
 }
 
-func (er *ExfatReader) getCurrentSector() (sector int, offset int) {
+func (er *ExfatReader) getCurrentSector() (sector uint32, offset uint32) {
 
 	// TODO(dustin): Add test.
+
+	sectorSize := er.SectorSize()
 
 	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
 	log.PanicIf(err)
 
 	currentOffset := int(currentOffsetRaw)
 
-	return currentOffset / er.bootRegion.sectorSize, currentOffset % er.bootRegion.sectorSize
+	return uint32(currentOffset) / sectorSize, uint32(currentOffset) % sectorSize
 }
 
 func (er *ExfatReader) printCurrentSector() {
 
 	// TODO(dustin): Add test.
 
+	sectorSize := er.SectorSize()
+
 	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
 	log.PanicIf(err)
 
 	currentOffset := int(currentOffsetRaw)
 
-	fmt.Printf("CURRENT SECTOR: (%d) (%d)\n", currentOffset/er.bootRegion.sectorSize, currentOffset%er.bootRegion.sectorSize)
+	fmt.Printf("CURRENT SECTOR: (%d) (%d)\n", uint32(currentOffset)/sectorSize, uint32(currentOffset)%sectorSize)
 }
 
 func (er *ExfatReader) assertAlignedToSector() {
 
 	// TODO(dustin): Add test.
 
+	sectorSize := er.SectorSize()
+
 	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
 	log.PanicIf(err)
 
 	currentOffset := int(currentOffsetRaw)
 
-	if currentOffset%er.bootRegion.sectorSize != 0 {
-		log.Panicf("not currently aligned to a sector: (%d) (%d)", currentOffset/er.bootRegion.sectorSize, currentOffset%er.bootRegion.sectorSize)
+	if uint32(currentOffset)%sectorSize != 0 {
+		log.Panicf("not currently aligned to a sector: (%d) (%d)", uint32(currentOffset)/sectorSize, uint32(currentOffset)%sectorSize)
 	}
 }
 
@@ -682,6 +688,8 @@ func (er *ExfatReader) parseFat() (fat Fat, err error) {
 
 	er.assertAlignedToSector()
 
+	sectorSize := er.SectorSize()
+
 	// This field is mandatory and Section 4.1.1 defines its contents.
 	//
 	// The FatEntry[0] field shall describe the media type in the first byte (the lowest order byte) and shall contain FFh in the remaining three bytes.
@@ -712,7 +720,7 @@ func (er *ExfatReader) parseFat() (fat Fat, err error) {
 		log.Panicf("second fat-entry has unexpected value: (%08x)", value)
 	}
 
-	totalFatSize := er.bootRegion.bsh.FatLength * uint32(er.bootRegion.sectorSize)
+	totalFatSize := er.bootRegion.bsh.FatLength * sectorSize
 
 	// Includes the two uint32s above.
 	actualFatSize := ((er.bootRegion.bsh.ClusterCount + 1) * 4)
@@ -763,6 +771,8 @@ func (er *ExfatReader) parseFats() (fats []Fat, err error) {
 		}
 	}()
 
+	sectorSize := er.SectorSize()
+
 	emptyBootRegion := bootRegion{}
 	if er.bootRegion == emptyBootRegion {
 		log.Panicf("boot-sectors not loaded yet")
@@ -772,7 +782,7 @@ func (er *ExfatReader) parseFats() (fats []Fat, err error) {
 	//
 	// Note: the Main and Backup Boot Sectors both contain the FatOffset field.
 
-	fatAlignment := make([]byte, (int(er.bootRegion.bsh.FatOffset)-24)*er.bootRegion.sectorSize)
+	fatAlignment := make([]byte, (uint32(er.bootRegion.bsh.FatOffset)-24)*sectorSize)
 
 	_, err = io.ReadFull(er.rs, fatAlignment)
 	log.PanicIf(err)
@@ -792,6 +802,98 @@ func (er *ExfatReader) parseFats() (fats []Fat, err error) {
 	return fats, nil
 }
 
+func (er *ExfatReader) SectorsPerCluster() uint32 {
+
+	// TODO(dustin): !! Add test.
+
+	return uint32(math.Pow(float64(2), float64(er.bootRegion.bsh.SectorsPerClusterShift)))
+}
+
+func (er *ExfatReader) SectorSize() uint32 {
+
+	// TODO(dustin): !! Add test.
+
+	return uint32(er.bootRegion.sectorSize)
+}
+
+// Cluster manages reads on the sectors in a cluster and checks that the
+// requested sectors are within bounds.
+type Cluster struct {
+	er *ExfatReader
+
+	clusterSize       uint32
+	sectorsPerCluster uint32
+	clusterOffset     uint32
+}
+
+func newCluster(er *ExfatReader, clusterNumber uint32) *Cluster {
+
+	// TODO(dustin): !! Add test.
+
+	sectorsPerCluster := er.SectorsPerCluster()
+	sectorSize := er.SectorSize()
+
+	clusterSize := sectorsPerCluster * sectorSize
+	clusterOffset := er.clusterHeapOffset + clusterSize*clusterNumber
+
+	return &Cluster{
+		er: er,
+
+		clusterSize:       clusterSize,
+		sectorsPerCluster: sectorsPerCluster,
+		clusterOffset:     clusterOffset,
+	}
+}
+
+func (cluster *Cluster) GetSectorByIndex(sectorIndex uint32) (data []byte, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	// TODO(dustin): !! Add test.
+
+	if sectorIndex >= cluster.sectorsPerCluster {
+		log.Panicf("sector-index exceeds the number of sectors per cluster: (%d) >= (%d)", sectorIndex, cluster.sectorsPerCluster)
+	}
+
+	sectorSize := cluster.er.SectorSize()
+
+	offset := cluster.clusterOffset + sectorSize*sectorIndex
+
+	_, err = cluster.er.rs.Seek(int64(offset), os.SEEK_SET)
+	log.PanicIf(err)
+
+	data = make([]byte, sectorSize)
+
+	_, err = io.ReadFull(cluster.er.rs, data)
+	log.PanicIf(err)
+
+	return data, nil
+}
+
+func (er *ExfatReader) GetCluster(clusterNumber uint32) (cluster *Cluster, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	cluster = newCluster(er, clusterNumber)
+	return cluster, nil
+}
+
 func (er *ExfatReader) setClusterHeapOffset() (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
@@ -806,8 +908,10 @@ func (er *ExfatReader) setClusterHeapOffset() (err error) {
 
 	// TODO(dustin): !! Add test.
 
+	sectorSize := er.SectorSize()
+
 	alignmentSectors := er.bootRegion.bsh.ClusterHeapOffset - (er.bootRegion.bsh.FatOffset + er.bootRegion.bsh.FatLength*uint32(er.bootRegion.bsh.NumberOfFats))
-	alignmentByteCount := alignmentSectors * uint32(er.bootRegion.sectorSize)
+	alignmentByteCount := alignmentSectors * sectorSize
 
 	alignmentBytes := make([]byte, alignmentByteCount)
 
@@ -819,14 +923,14 @@ func (er *ExfatReader) setClusterHeapOffset() (err error) {
 
 	clusterHeapOffset := int(currentOffsetRaw)
 
-	currentSectorNumber := clusterHeapOffset / er.bootRegion.sectorSize
-	remainder := clusterHeapOffset % er.bootRegion.sectorSize
+	currentSectorNumber := uint32(clusterHeapOffset) / sectorSize
+	remainder := uint32(clusterHeapOffset) % sectorSize
 
 	if uint32(currentSectorNumber) != er.bootRegion.bsh.ClusterHeapOffset || remainder != 0 {
 		log.Panicf("calculated cluster offset does not match expected cluster offset: (%d) (%d) != (%d)", currentSectorNumber, remainder, er.bootRegion.bsh.ClusterHeapOffset)
 	}
 
-	er.clusterHeapOffset = clusterHeapOffset
+	er.clusterHeapOffset = uint32(clusterHeapOffset)
 
 	return nil
 }
