@@ -25,8 +25,6 @@ func NewExfatNavigator(er *ExfatReader, firstClusterNumber uint32) (en *ExfatNav
 	}
 }
 
-type DirectoryEntryVisitorFunc func() (err error)
-
 type EntryType uint8
 
 func (et EntryType) IsEndOfDirectory() bool {
@@ -123,8 +121,8 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries() (err error) {
 
 	entryNumber := 0
 	// entryCount := -1
-	var collectedSecondaryEntries []ExfatSecondaryDirectoryEntry
-	needSecondaryEntryCount := 0
+	// var collectedSecondaryEntries []ExfatSecondaryDirectoryEntry
+	// needSecondaryEntryCount := 0
 	isDone := false
 
 	// TODO(dustin): Add additional strictness? Should every secondary entry be collected for the nearest preceding primary entry? This means that we can/need to validate that the size of the sequence of secondary entries much match the second-entry count stored on the last primary entry.
@@ -209,5 +207,5 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries() (err error) {
 	err = en.er.EnumerateClusters(en.firstClusterNumber, cvf)
 	log.PanicIf(err)
 
-	return primaryEntry, secondaryEntries, nil
+	return nil
 }

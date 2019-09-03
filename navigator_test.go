@@ -26,11 +26,11 @@ func TestExfatNavigator_EnumerateDirectoryEntries(t *testing.T) {
 	firstClusterNumber := er.FirstClusterOfRootDirectory()
 	en := NewExfatNavigator(er, firstClusterNumber)
 
-	primaryEntry, secondaryEntries, err := en.EnumerateDirectoryEntries()
+	err = en.EnumerateDirectoryEntries()
 	log.PanicIf(err)
 
-	primaryEntry = primaryEntry
-	secondaryEntries = secondaryEntries
+	// primaryEntry = primaryEntry
+	// secondaryEntries = secondaryEntries
 
 	// er.bootRegion.bsh.Dump()
 	// primaryEntry.Dump()

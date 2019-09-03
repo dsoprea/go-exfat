@@ -14,8 +14,6 @@ import (
 	"github.com/go-restruct/restruct"
 )
 
-// TOOD(dustin): !! Review what we're casting to int() and what we can switch to using uint64().
-
 const (
 	bootSectorHeaderSize        = 512
 	oemParametersSize           = 48 * 10
@@ -31,7 +29,7 @@ var (
 
 type bootRegion struct {
 	bsh        BootSectorHeader
-	sectorSize int
+	sectorSize uint32
 }
 
 type ExfatReader struct {
@@ -371,7 +369,7 @@ func (bsh BootSectorHeader) String() string {
 	return fmt.Sprintf("BootSector<SN=(%08x) REVISION=(%02x)-(%02x)>", bsh.VolumeSerialNumber, bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
 }
 
-func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, sectorSize int, err error) {
+func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, sectorSize uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -401,7 +399,7 @@ func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, sectorSize in
 	}
 
 	// Forward through the excess bytes.
-	sectorSize = int(math.Pow(2, float64(bsh.BytesPerSectorShift)))
+	sectorSize = uint32(math.Pow(2, float64(bsh.BytesPerSectorShift)))
 	excessByteCount := sectorSize - 512
 
 	if excessByteCount != 0 {
@@ -414,7 +412,7 @@ func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, sectorSize in
 
 type ExtendedBootCode []byte
 
-func (er *ExfatReader) readExtendedBootSector(sectorSize int) (extendedBootCode ExtendedBootCode, err error) {
+func (er *ExfatReader) readExtendedBootSector(sectorSize uint32) (extendedBootCode ExtendedBootCode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -457,7 +455,7 @@ func (er *ExfatReader) readExtendedBootSector(sectorSize int) (extendedBootCode 
 	return extendedBootCode, nil
 }
 
-func (er *ExfatReader) readExtendedBootSectors(sectorSize int) (extendedBootCodeList [mainExtendedBootSectorCount]ExtendedBootCode, err error) {
+func (er *ExfatReader) readExtendedBootSectors(sectorSize uint32) (extendedBootCodeList [mainExtendedBootSectorCount]ExtendedBootCode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -487,7 +485,7 @@ type OemParameters struct {
 	Parameters [10]OemParameter
 }
 
-func (er *ExfatReader) readOemParameters(sectorSize int) (oemParameters OemParameters, err error) {
+func (er *ExfatReader) readOemParameters(sectorSize uint32) (oemParameters OemParameters, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -513,7 +511,7 @@ func (er *ExfatReader) readOemParameters(sectorSize int) (oemParameters OemParam
 	return oemParameters, nil
 }
 
-func (er *ExfatReader) readMainReserved(sectorSize int) (err error) {
+func (er *ExfatReader) readMainReserved(sectorSize uint32) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -537,7 +535,7 @@ func (er *ExfatReader) readMainReserved(sectorSize int) (err error) {
 	return nil
 }
 
-func (er *ExfatReader) readMainBootChecksum(sectorSize int) (err error) {
+func (er *ExfatReader) readMainBootChecksum(sectorSize uint32) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -572,9 +570,9 @@ func (er *ExfatReader) getCurrentSector() (sector uint32, offset uint32) {
 	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
 	log.PanicIf(err)
 
-	currentOffset := int(currentOffsetRaw)
+	currentOffset := uint32(currentOffsetRaw)
 
-	return uint32(currentOffset) / sectorSize, uint32(currentOffset) % sectorSize
+	return currentOffset / sectorSize, currentOffset % sectorSize
 }
 
 func (er *ExfatReader) printCurrentSector() {
@@ -586,9 +584,9 @@ func (er *ExfatReader) printCurrentSector() {
 	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
 	log.PanicIf(err)
 
-	currentOffset := int(currentOffsetRaw)
+	currentOffset := uint32(currentOffsetRaw)
 
-	fmt.Printf("CURRENT SECTOR: (%d) (%d)\n", uint32(currentOffset)/sectorSize, uint32(currentOffset)%sectorSize)
+	fmt.Printf("CURRENT SECTOR: (%d) (%d)\n", currentOffset/sectorSize, currentOffset%sectorSize)
 }
 
 func (er *ExfatReader) assertAlignedToSector() {
@@ -600,10 +598,10 @@ func (er *ExfatReader) assertAlignedToSector() {
 	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
 	log.PanicIf(err)
 
-	currentOffset := int(currentOffsetRaw)
+	currentOffset := uint32(currentOffsetRaw)
 
-	if uint32(currentOffset)%sectorSize != 0 {
-		log.Panicf("not currently aligned to a sector: (%d) (%d)", uint32(currentOffset)/sectorSize, uint32(currentOffset)%sectorSize)
+	if currentOffset%sectorSize != 0 {
+		log.Panicf("not currently aligned to a sector: (%d) (%d)", currentOffset/sectorSize, currentOffset%sectorSize)
 	}
 }
 
@@ -858,7 +856,7 @@ func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb Cluste
 			break
 		}
 
-		if int(currentClusterNumber) >= len(er.activeFat) {
+		if currentClusterNumber >= uint32(len(er.activeFat)) {
 			log.Panicf("cluster exceeds FAT bounds: (%d) >= (%d)", currentClusterNumber, len(er.activeFat))
 		}
 
@@ -900,10 +898,10 @@ func (er *ExfatReader) checkClusterHeapOffset() (err error) {
 	currentOffsetRaw, err := er.rs.Seek(0, os.SEEK_CUR)
 	log.PanicIf(err)
 
-	clusterHeapOffset := int(currentOffsetRaw)
+	clusterHeapOffset := uint32(currentOffsetRaw)
 
-	currentSectorNumber := uint32(clusterHeapOffset) / sectorSize
-	remainder := uint32(clusterHeapOffset) % sectorSize
+	currentSectorNumber := clusterHeapOffset / sectorSize
+	remainder := clusterHeapOffset % sectorSize
 
 	if uint32(currentSectorNumber) != er.bootRegion.bsh.ClusterHeapOffset || remainder != 0 {
 		log.Panicf("calculated cluster offset does not match expected cluster offset: (%d) (%d) != (%d)", currentSectorNumber, remainder, er.bootRegion.bsh.ClusterHeapOffset)
