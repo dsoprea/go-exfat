@@ -41,8 +41,9 @@ type bootRegion struct {
 type ExfatReader struct {
 	rs io.ReadSeeker
 
-	bootRegion        bootRegion
-	clusterHeapOffset uint32
+	bootRegion bootRegion
+
+	activeFat Fat
 }
 
 func NewExfatReader(rs io.ReadSeeker) *ExfatReader {
@@ -334,6 +335,14 @@ const (
 	// 1, which means implementations shall clear this field to 0 prior to modifying any file system structures, directories, or files
 	VolumeFlagClearToZero = 8
 )
+
+func (bsh BootSectorHeader) UseFirstFat() bool {
+	return VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat == 0
+}
+
+func (bsh BootSectorHeader) UseSecondFat() bool {
+	return VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0
+}
 
 func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("PartitionOffset: (%d)\n", bsh.PartitionOffset)
@@ -802,13 +811,6 @@ func (er *ExfatReader) parseFats() (fats []Fat, err error) {
 	return fats, nil
 }
 
-func (er *ExfatReader) SectorsPerCluster() uint32 {
-
-	// TODO(dustin): !! Add test.
-
-	return uint32(math.Pow(float64(2), float64(er.bootRegion.bsh.SectorsPerClusterShift)))
-}
-
 func (er *ExfatReader) SectorSize() uint32 {
 
 	// TODO(dustin): !! Add test.
@@ -816,85 +818,53 @@ func (er *ExfatReader) SectorSize() uint32 {
 	return uint32(er.bootRegion.sectorSize)
 }
 
-// Cluster manages reads on the sectors in a cluster and checks that the
-// requested sectors are within bounds.
-type Cluster struct {
-	er *ExfatReader
-
-	clusterSize       uint32
-	sectorsPerCluster uint32
-	clusterOffset     uint32
-}
-
-func newCluster(er *ExfatReader, clusterNumber uint32) *Cluster {
+func (er *ExfatReader) SectorsPerCluster() uint32 {
 
 	// TODO(dustin): !! Add test.
 
-	sectorsPerCluster := er.SectorsPerCluster()
-	sectorSize := er.SectorSize()
-
-	clusterSize := sectorsPerCluster * sectorSize
-	clusterOffset := er.clusterHeapOffset + clusterSize*clusterNumber
-
-	return &Cluster{
-		er: er,
-
-		clusterSize:       clusterSize,
-		sectorsPerCluster: sectorsPerCluster,
-		clusterOffset:     clusterOffset,
-	}
+	return uint32(math.Pow(float64(2), float64(er.bootRegion.bsh.SectorsPerClusterShift)))
 }
 
-func (cluster *Cluster) GetSectorByIndex(sectorIndex uint32) (data []byte, err error) {
-	defer func() {
-		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
-		}
-	}()
+func (er *ExfatReader) FirstClusterOfRootDirectory() uint32 {
 
 	// TODO(dustin): !! Add test.
 
-	if sectorIndex >= cluster.sectorsPerCluster {
-		log.Panicf("sector-index exceeds the number of sectors per cluster: (%d) >= (%d)", sectorIndex, cluster.sectorsPerCluster)
+	return er.bootRegion.bsh.FirstClusterOfRootDirectory
+}
+
+func (er *ExfatReader) GetCluster(clusterNumber uint32) *ExfatCluster {
+	ec := newExfatCluster(er, clusterNumber)
+	return ec
+}
+
+type ClusterVisitorFunc func(ec *ExfatCluster) (err error)
+
+// EnumerateClusters calls the given callback for each cluster in the chain
+// starting from the given cluster.
+func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb ClusterVisitorFunc) (err error) {
+	currentClusterNumber := startingClusterNumber
+	for {
+		ec := er.GetCluster(currentClusterNumber)
+
+		err := cb(ec)
+		log.PanicIf(err)
+
+		if int(currentClusterNumber) >= len(er.activeFat) {
+			log.Panicf("cluster exceeds FAT bounds: (%d) >= (%d)", currentClusterNumber, len(er.activeFat))
+		}
+
+		nextMappedCluster := er.activeFat[currentClusterNumber]
+		if nextMappedCluster.IsBad() == true {
+			break
+		}
+
+		currentClusterNumber = uint32(nextMappedCluster)
 	}
 
-	sectorSize := cluster.er.SectorSize()
-
-	offset := cluster.clusterOffset + sectorSize*sectorIndex
-
-	_, err = cluster.er.rs.Seek(int64(offset), os.SEEK_SET)
-	log.PanicIf(err)
-
-	data = make([]byte, sectorSize)
-
-	_, err = io.ReadFull(cluster.er.rs, data)
-	log.PanicIf(err)
-
-	return data, nil
+	return nil
 }
 
-func (er *ExfatReader) GetCluster(clusterNumber uint32) (cluster *Cluster, err error) {
-	defer func() {
-		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
-		}
-	}()
-
-	cluster = newCluster(er, clusterNumber)
-	return cluster, nil
-}
-
-func (er *ExfatReader) setClusterHeapOffset() (err error) {
+func (er *ExfatReader) checkClusterHeapOffset() (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -930,8 +900,6 @@ func (er *ExfatReader) setClusterHeapOffset() (err error) {
 		log.Panicf("calculated cluster offset does not match expected cluster offset: (%d) (%d) != (%d)", currentSectorNumber, remainder, er.bootRegion.bsh.ClusterHeapOffset)
 	}
 
-	er.clusterHeapOffset = uint32(clusterHeapOffset)
-
 	return nil
 }
 
@@ -958,10 +926,125 @@ func (er *ExfatReader) Parse() (err error) {
 	fats, err := er.parseFats()
 	log.PanicIf(err)
 
-	err = er.setClusterHeapOffset()
+	// Technically, the spec says that only the active-fat flag in the main
+	// boot-sector should be used (not the backup):
+	//
+	// 	The ActiveFat field of the VolumeFlags field describes which FAT is
+	// 	active. Only the VolumeFlags field in the Main Boot Sector is current.
+	// 	Implementations shall treat the FAT which is not active as stale. Use
+	// 	of the inactive FAT and switching between FATs is implementation
+	// 	specific.
+	//
+	// Obviously, the backup boot sector is there for a reason and, in the event
+	// that the main boot-sector is garbage, we want to be consistent with the
+	// boot-sector that we're supposed to be using.
+
+	if er.bootRegion.bsh.UseFirstFat() == true {
+		er.activeFat = fats[0]
+	} else if er.bootRegion.bsh.UseSecondFat() == true {
+		er.activeFat = fats[1]
+	} else {
+		log.Panicf("no fat selected")
+	}
+
+	err = er.checkClusterHeapOffset()
 	log.PanicIf(err)
 
-	fats = fats
+	return nil
+}
+
+// Cluster manages reads on the sectors in a cluster and checks that the
+// requested sectors are within bounds.
+type ExfatCluster struct {
+	er *ExfatReader
+
+	clusterNumber     uint32
+	clusterSize       uint32
+	sectorsPerCluster uint32
+	clusterOffset     uint32
+}
+
+func newExfatCluster(er *ExfatReader, clusterNumber uint32) *ExfatCluster {
+
+	// TODO(dustin): !! Add test.
+
+	sectorsPerCluster := er.SectorsPerCluster()
+	sectorSize := er.SectorSize()
+
+	clusterSize := sectorsPerCluster * sectorSize
+	clusterHeapOffset := er.bootRegion.bsh.ClusterHeapOffset * er.SectorSize()
+	clusterOffset := clusterHeapOffset + clusterSize*clusterNumber
+
+	return &ExfatCluster{
+		er: er,
+
+		clusterNumber:     clusterNumber,
+		clusterSize:       clusterSize,
+		sectorsPerCluster: sectorsPerCluster,
+		clusterOffset:     clusterOffset,
+	}
+}
+
+func (ec *ExfatCluster) ClusterNumber() uint32 {
+	return ec.clusterNumber
+}
+
+func (ec *ExfatCluster) GetSectorByIndex(sectorIndex uint32) (data []byte, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	// TODO(dustin): !! Add test.
+
+	if sectorIndex >= ec.sectorsPerCluster {
+		log.Panicf("sector-index exceeds the number of sectors per cluster: (%d) >= (%d)", sectorIndex, ec.sectorsPerCluster)
+	}
+
+	sectorSize := ec.er.SectorSize()
+
+	offset := ec.clusterOffset + sectorSize*sectorIndex
+
+	_, err = ec.er.rs.Seek(int64(offset), os.SEEK_SET)
+	log.PanicIf(err)
+
+	data = make([]byte, sectorSize)
+
+	_, err = io.ReadFull(ec.er.rs, data)
+	log.PanicIf(err)
+
+	return data, nil
+}
+
+type SectorVisitorFunc func(sectorNumber uint32, data []byte) (err error)
+
+func (ec *ExfatCluster) EnumerateSectors(cb SectorVisitorFunc) (err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	for i := uint32(0); i < ec.sectorsPerCluster; i++ {
+		sectorData, err := ec.GetSectorByIndex(i)
+		log.PanicIf(err)
+
+		sectorNumber := ec.er.bootRegion.bsh.ClusterHeapOffset + ec.clusterNumber + i
+
+		err = cb(sectorNumber, sectorData)
+		log.PanicIf(err)
+	}
 
 	return nil
 }
