@@ -158,124 +158,124 @@ type PrimaryDirectoryEntry interface {
 	SecondaryCount() uint8
 }
 
-type ExfatPrimaryDirectoryEntry struct {
-	// EntryType: This field is mandatory and Section 6.3.1 defines its contents.
-	//
-	// The EntryType field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.1).
-	EntryType EntryType
+// type ExfatPrimaryDirectoryEntry struct {
+// 	// EntryType: This field is mandatory and Section 6.3.1 defines its contents.
+// 	//
+// 	// The EntryType field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.1).
+// 	EntryType EntryType
+//
+// 	// SecondaryCount: This field is mandatory and Section 6.3.2 defines its contents.
+// 	//
+// 	// The SecondaryCount field shall describe the number of secondary directory entries which immediately follow the given primary directory entry. These secondary directory entries, along with the given primary directory entry, comprise the directory entry set.
+// 	//
+// 	// The valid range of values for this field shall be:
+// 	//
+// 	// At least 0, which means this primary directory entry is the only entry in the directory entry set
+// 	//
+// 	// At most 255, which means the next 255 directory entries and this primary directory entry comprise the directory entry set
+// 	//
+// 	// Critical primary directory entry structures which derive from this template may redefine both the SecondaryCount and SetChecksum fields.
+// 	SecondaryCount_ uint8
+//
+// 	// SetChecksum: This field is mandatory and Section 6.3.3 defines its contents.
+// 	//
+// 	// The SetChecksum field shall contain the checksum of all directory entries in the given directory entry set. However, the checksum excludes this field (see Figure 2). Implementations shall verify the contents of this field are valid prior to using any other directory entry in the given directory entry set.
+// 	//
+// 	// Critical primary directory entry structures which derive from this template may redefine both the SecondaryCount and SetChecksum fields.
+// 	SetChecksum uint16
+//
+// 	// GeneralPrimaryFlags: This field is mandatory and Section 6.3.4 defines its contents.
+// 	//
+// 	// The GeneralPrimaryFlags field contains flags (see Table 17).
+// 	//
+// 	// Critical primary directory entry structures which derive from this template may redefine this field.
+// 	GeneralPrimaryFlags uint16
+//
+// 	// CustomDefined: This field is mandatory and structures which derive from this template define its contents.
+// 	CustomDefined [14]byte
+//
+// 	// FirstCluster: This field is mandatory and Section 6.3.5 defines its contents.
+// 	//
+// 	// The FirstCluster field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.2).
+// 	//
+// 	// If the NoFatChain bit is 1 then FirstCluster must point to a valid cluster in the cluster heap.
+// 	//
+// 	// Critical primary directory entry structures which derive from this template may redefine the FirstCluster and DataLength fields. Other structures which derive from this template may redefine the FirstCluster and DataLength fields only if the AllocationPossible field contains the value 0.
+// 	FirstCluster uint32
+//
+// 	// DataLength: This field is mandatory and Section 6.3.6 defines its contents.
+// 	//
+// 	// The DataLength field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.3).
+// 	//
+// 	// If the NoFatChain bit is 1 then DataLength must not be zero. If the FirstCluster field is zero, then DataLength must also be zero.
+// 	//
+// 	// Critical primary directory entry structures which derive from this template may redefine the FirstCluster and DataLength fields. Other structures which derive from this template may redefine the FirstCluster and DataLength fields only if the AllocationPossible field contains the value 0.
+// 	DataLength uint64
+// }
+//
+// func (sde ExfatPrimaryDirectoryEntry) String() string {
+// 	return fmt.Sprintf("PrimaryDirectoryEntry<TYPE=(%d) SECONDARY-COUNT=(%d) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", sde.EntryType, sde.SecondaryCount_, sde.FirstCluster, sde.DataLength)
+// }
+//
+// func (sde ExfatPrimaryDirectoryEntry) Dump() {
+// 	fmt.Printf("Primary Directory Entry\n")
+// 	fmt.Printf("=======================\n")
+// 	fmt.Printf("\n")
+//
+// 	fmt.Printf("EntryType: (%d) [%08b]\n", sde.EntryType, sde.EntryType)
+// 	fmt.Printf("SecondaryCount: (%d)\n", sde.SecondaryCount_)
+// 	fmt.Printf("SetChecksum: (%04x)\n", sde.SetChecksum)
+// 	fmt.Printf("GeneralPrimaryFlags: (%04x)\n", sde.GeneralPrimaryFlags)
+// 	fmt.Printf("FirstCluster: (%d)\n", sde.FirstCluster)
+// 	fmt.Printf("DataLength: (%d)\n", sde.DataLength)
+//
+// 	fmt.Printf("\n")
+// }
+//
+// func (sde ExfatPrimaryDirectoryEntry) SecondaryCount() uint8 {
+// 	return sde.SecondaryCount_
+// }
+//
+// func (ExfatPrimaryDirectoryEntry) TypeName() string {
+// 	return "_Primary"
+// }
 
-	// SecondaryCount: This field is mandatory and Section 6.3.2 defines its contents.
-	//
-	// The SecondaryCount field shall describe the number of secondary directory entries which immediately follow the given primary directory entry. These secondary directory entries, along with the given primary directory entry, comprise the directory entry set.
-	//
-	// The valid range of values for this field shall be:
-	//
-	// At least 0, which means this primary directory entry is the only entry in the directory entry set
-	//
-	// At most 255, which means the next 255 directory entries and this primary directory entry comprise the directory entry set
-	//
-	// Critical primary directory entry structures which derive from this template may redefine both the SecondaryCount and SetChecksum fields.
-	SecondaryCount_ uint8
-
-	// SetChecksum: This field is mandatory and Section 6.3.3 defines its contents.
-	//
-	// The SetChecksum field shall contain the checksum of all directory entries in the given directory entry set. However, the checksum excludes this field (see Figure 2). Implementations shall verify the contents of this field are valid prior to using any other directory entry in the given directory entry set.
-	//
-	// Critical primary directory entry structures which derive from this template may redefine both the SecondaryCount and SetChecksum fields.
-	SetChecksum uint16
-
-	// GeneralPrimaryFlags: This field is mandatory and Section 6.3.4 defines its contents.
-	//
-	// The GeneralPrimaryFlags field contains flags (see Table 17).
-	//
-	// Critical primary directory entry structures which derive from this template may redefine this field.
-	GeneralPrimaryFlags uint16
-
-	// CustomDefined: This field is mandatory and structures which derive from this template define its contents.
-	CustomDefined [14]byte
-
-	// FirstCluster: This field is mandatory and Section 6.3.5 defines its contents.
-	//
-	// The FirstCluster field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.2).
-	//
-	// If the NoFatChain bit is 1 then FirstCluster must point to a valid cluster in the cluster heap.
-	//
-	// Critical primary directory entry structures which derive from this template may redefine the FirstCluster and DataLength fields. Other structures which derive from this template may redefine the FirstCluster and DataLength fields only if the AllocationPossible field contains the value 0.
-	FirstCluster uint32
-
-	// DataLength: This field is mandatory and Section 6.3.6 defines its contents.
-	//
-	// The DataLength field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.3).
-	//
-	// If the NoFatChain bit is 1 then DataLength must not be zero. If the FirstCluster field is zero, then DataLength must also be zero.
-	//
-	// Critical primary directory entry structures which derive from this template may redefine the FirstCluster and DataLength fields. Other structures which derive from this template may redefine the FirstCluster and DataLength fields only if the AllocationPossible field contains the value 0.
-	DataLength uint64
-}
-
-func (sde ExfatPrimaryDirectoryEntry) String() string {
-	return fmt.Sprintf("PrimaryDirectoryEntry<TYPE=(%d) SECONDARY-COUNT=(%d) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", sde.EntryType, sde.SecondaryCount_, sde.FirstCluster, sde.DataLength)
-}
-
-func (sde ExfatPrimaryDirectoryEntry) Dump() {
-	fmt.Printf("Primary Directory Entry\n")
-	fmt.Printf("=======================\n")
-	fmt.Printf("\n")
-
-	fmt.Printf("EntryType: (%d) [%08b]\n", sde.EntryType, sde.EntryType)
-	fmt.Printf("SecondaryCount: (%d)\n", sde.SecondaryCount_)
-	fmt.Printf("SetChecksum: (%04x)\n", sde.SetChecksum)
-	fmt.Printf("GeneralPrimaryFlags: (%04x)\n", sde.GeneralPrimaryFlags)
-	fmt.Printf("FirstCluster: (%d)\n", sde.FirstCluster)
-	fmt.Printf("DataLength: (%d)\n", sde.DataLength)
-
-	fmt.Printf("\n")
-}
-
-func (sde ExfatPrimaryDirectoryEntry) SecondaryCount() uint8 {
-	return sde.SecondaryCount_
-}
-
-func (ExfatPrimaryDirectoryEntry) TypeName() string {
-	return "_Primary"
-}
-
-type ExfatSecondaryDirectoryEntry struct {
-	// EntryType: This field is mandatory and Section 6.4.1 defines its contents.
-	//
-	// The EntryType field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.1)
-	EntryType EntryType
-
-	// GeneralSecondaryFlags: This field is mandatory and Section 6.4.2 defines its contents.
-	//
-	// The GeneralSecondaryFlags field contains flags (see Table 19).
-	GeneralSecondaryFlags uint8
-
-	// CustomDefined: This field is mandatory and structures which derive from this template define its contents.
-	CustomDefined [18]byte
-
-	// FirstCluster: This field is mandatory and Section 6.4.3 defines its contents.
-	//
-	// The FirstCluster field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.2).
-	//
-	// If the NoFatChain bit is 1 then FirstCluster must point to a valid cluster in the cluster heap.
-	FirstCluster uint32
-
-	// DataLength: This field is mandatory and Section 6.4.4 defines its contents.
-	//
-	// The DataLength field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.3).
-	//
-	// If the NoFatChain bit is 1 then DataLength must not be zero. If the FirstCluster field is zero, then DataLength must also be zero.
-	DataLength uint64
-}
-
-func (sde ExfatSecondaryDirectoryEntry) String() string {
-	return fmt.Sprintf("SecondaryDirectoryEntry<TYPE=(%d) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", sde.EntryType, sde.FirstCluster, sde.DataLength)
-}
-
-func (ExfatSecondaryDirectoryEntry) TypeName() string {
-	return "_Secondary"
-}
+// type ExfatSecondaryDirectoryEntry struct {
+// 	// EntryType: This field is mandatory and Section 6.4.1 defines its contents.
+// 	//
+// 	// The EntryType field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.1)
+// 	EntryType EntryType
+//
+// 	// GeneralSecondaryFlags: This field is mandatory and Section 6.4.2 defines its contents.
+// 	//
+// 	// The GeneralSecondaryFlags field contains flags (see Table 19).
+// 	GeneralSecondaryFlags uint8
+//
+// 	// CustomDefined: This field is mandatory and structures which derive from this template define its contents.
+// 	CustomDefined [18]byte
+//
+// 	// FirstCluster: This field is mandatory and Section 6.4.3 defines its contents.
+// 	//
+// 	// The FirstCluster field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.2).
+// 	//
+// 	// If the NoFatChain bit is 1 then FirstCluster must point to a valid cluster in the cluster heap.
+// 	FirstCluster uint32
+//
+// 	// DataLength: This field is mandatory and Section 6.4.4 defines its contents.
+// 	//
+// 	// The DataLength field shall conform to the definition provided in the Generic DirectoryEntry template (see Section 6.2.3).
+// 	//
+// 	// If the NoFatChain bit is 1 then DataLength must not be zero. If the FirstCluster field is zero, then DataLength must also be zero.
+// 	DataLength uint64
+// }
+//
+// func (sde ExfatSecondaryDirectoryEntry) String() string {
+// 	return fmt.Sprintf("SecondaryDirectoryEntry<TYPE=(%d) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", sde.EntryType, sde.FirstCluster, sde.DataLength)
+// }
+//
+// func (ExfatSecondaryDirectoryEntry) TypeName() string {
+// 	return "_Secondary"
+// }
 
 type ExfatTimestamp uint32
 
@@ -543,6 +543,9 @@ func (ExfatTexFATDirectoryEntry) TypeName() string {
 }
 
 type ExfatStreamExtensionDirectoryEntry struct {
+
+	// TODO(dustin): It's unclear where the names for the one or more streams under each file are stored.
+
 	// EntryType: This field is mandatory and Section 7.6.1 defines its contents.
 	EntryType EntryType
 
@@ -568,6 +571,13 @@ type ExfatStreamExtensionDirectoryEntry struct {
 	Reserved3 [4]byte
 
 	// FirstCluster: This field is mandatory and Section 7.6.6 defines its contents.
+	//
+	// NOTES
+	//
+	// - If a directory, this cluster has all of the subdirectories and files
+	//   for that directory (formatted the same as the root directory located at
+	//   cluster FirstClusterOfRootDirectory).
+	//
 	FirstCluster uint32
 
 	// DataLength: This field is mandatory and Section 7.6.7 defines its contents.
@@ -605,6 +615,12 @@ func (ExfatFileNameDirectoryEntry) TypeName() string {
 type MultipartFilename []DirectoryEntry
 
 func (mf MultipartFilename) Filename() string {
+
+	// NOTE(dustin): The total filename length is specified in the "Stream
+	// Extension" directory entry that occurs after the primary file entry and
+	// before these file-name directory-entries, but we don't implement/
+	// validate that count, here.
+
 	parts := make([]string, 0)
 
 	for _, deRaw := range mf {
