@@ -5,7 +5,6 @@ import (
 	"reflect"
 
 	"github.com/dsoprea/go-logging"
-	"github.com/go-restruct/restruct"
 )
 
 const (
@@ -25,87 +24,9 @@ func NewExfatNavigator(er *ExfatReader, firstClusterNumber uint32) (en *ExfatNav
 	}
 }
 
-type EntryType uint8
+type DirectoryEntryVisitorFunc func(primaryEntry DirectoryEntry, secondaryEntries []DirectoryEntry) (err error)
 
-func (et EntryType) IsEndOfDirectory() bool {
-	return et == 0
-}
-
-func (et EntryType) IsUnusedEntryMarker() bool {
-	return et >= 0x01 && et <= 0x7f
-}
-
-func (et EntryType) IsRegular() bool {
-	return et >= 0x81 && et <= 0xff
-}
-
-func (et EntryType) TypeCode() int {
-	return int(et & 31)
-}
-
-func (et EntryType) TypeImportance() bool {
-	return et&32 > 0
-}
-
-func (et EntryType) IsCritical() bool {
-	return et.TypeImportance() == false
-}
-
-func (et EntryType) IsBenign() bool {
-	return et.TypeImportance() == true
-}
-
-func (et EntryType) TypeCategory() bool {
-	return et&64 > 0
-}
-
-func (et EntryType) IsPrimary() bool {
-	return et.TypeCategory() == false
-}
-
-func (et EntryType) IsSecondary() bool {
-	return et.TypeCategory() == true
-}
-
-func (et EntryType) IsInUse() bool {
-	return et&128 > 0
-}
-
-func (et EntryType) Dump() {
-	fmt.Printf("Entry Type\n")
-	fmt.Printf("==========\n")
-	fmt.Printf("\n")
-
-	fmt.Printf("TypeCode: (%d)\n", et.TypeCode())
-	fmt.Printf("\n")
-
-	fmt.Printf("TypeImportance: [%v]\n", et.TypeImportance())
-	fmt.Printf("- IsCritical: [%v]\n", et.IsCritical())
-	fmt.Printf("- IsBenign: [%v]\n", et.IsBenign())
-	fmt.Printf("\n")
-
-	fmt.Printf("TypeCategory: [%v]\n", et.TypeCategory())
-	fmt.Printf("- IsPrimary: [%v]\n", et.IsPrimary())
-	fmt.Printf("- IsSecondary: [%v]\n", et.IsSecondary())
-	fmt.Printf("\n")
-
-	fmt.Printf("IsInUse: [%v]\n", et.IsInUse())
-	fmt.Printf("\n")
-
-	fmt.Printf("Entry-Type Classes\n")
-	fmt.Printf("- IsEndOfDirectory: [%v]\n", et.IsEndOfDirectory())
-	fmt.Printf("- IsUnusedEntryMarker: [%v]\n", et.IsUnusedEntryMarker())
-	fmt.Printf("- IsRegular: [%v]\n", et.IsRegular())
-	fmt.Printf("\n")
-}
-
-func (et EntryType) String() string {
-	return fmt.Sprintf("EntryType<TYPE-CODE=(%d) IS-CRITICAL=[%v] IS-PRIMARY=[%v] IS-IN-USE=[%v] X-IS-REGULAR=[%v] X-IS-UNUSED=[%v] X-IS-END=[%v]>", et.TypeCode(), et.IsCritical(), et.IsPrimary(), et.IsInUse(), et.IsRegular(), et.IsUnusedEntryMarker(), et.IsEndOfDirectory())
-}
-
-type DirectoryEntryVisitorFunc func(primaryEntry ExfatPrimaryDirectoryEntry, secondaryEntries []ExfatSecondaryDirectoryEntry) (err error)
-
-func (en *ExfatNavigator) EnumerateDirectoryEntries() (err error) {
+func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -117,15 +38,15 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries() (err error) {
 		}
 	}()
 
+	// TODO(dustin): Add test.
+
 	// Enumerate clusters.
 
 	entryNumber := 0
-	// entryCount := -1
-	// var collectedSecondaryEntries []ExfatSecondaryDirectoryEntry
-	// needSecondaryEntryCount := 0
 	isDone := false
 
-	// TODO(dustin): Add additional strictness? Should every secondary entry be collected for the nearest preceding primary entry? This means that we can/need to validate that the size of the sequence of secondary entries much match the second-entry count stored on the last primary entry.
+	var primaryEntry DirectoryEntry
+	var secondaryEntries []DirectoryEntry
 
 	cvf := func(ec *ExfatCluster) (doContinue bool, err error) {
 		defer func() {
@@ -157,30 +78,53 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries() (err error) {
 
 			i := 0
 			for {
-				// fmt.Printf("    Directory entry (%d)\n", i)
-
 				directoryEntryData := data[i*directoryEntryBytesCount : (i+1)*directoryEntryBytesCount]
 
 				entryType := EntryType(directoryEntryData[0])
 
-				fmt.Printf("(%d): (%d) (%08b) %s\n", entryNumber, entryType, entryType, entryType)
-
 				// We've hit the terminal record.
-				if entryType == 0 {
+				if entryType.IsEndOfDirectory() == true {
 					isDone = true
 					return false, nil
 				}
 
-				if entryType.TypeCode() == 5 && entryType.IsCritical() == true && entryType.IsPrimary() == true {
-					fileDe := ExfatFileDirectoryEntry{}
+				de, err := parseDirectoryEntry(entryType, directoryEntryData)
+				log.PanicIf(err)
 
-					err := restruct.Unpack(directoryEntryData, defaultEncoding, &fileDe)
-					log.PanicIf(err)
+				if entryType.IsPrimary() == true {
+					primaryEntry = de
 
-					fmt.Printf("FILE: %s\n", fileDe)
+					// We'll always overwrite the primary as part of our
+					// process. Note that any secordary entries that we
+					// encounter will be appended to `secondaryEntries` but
+					// unless the last primary entry indicate that it wanted any
+					// of those secondary entries, they'll be forgotten.
+					secondaryEntries = make([]DirectoryEntry, 0)
+				} else {
+					secondaryEntries = append(secondaryEntries, de)
 				}
 
-				// TODO(dustin): !! Finish defining structs for all entry-types (which is also made mandatory by the spec), and then collect all primary entries (coupled with the exact number of subsequent secondary entries) and forward to a callback.
+				// If the primary entry did not have a secondary entry
+				// requirement, or it did and we've met it, call the callback.
+				if pde, ok := primaryEntry.(PrimaryDirectoryEntry); ok == true {
+					if len(secondaryEntries) == int(pde.SecondaryCount()) {
+						err := cb(primaryEntry, secondaryEntries)
+						log.PanicIf(err)
+					}
+				} else if entryType.IsPrimary() == true {
+					// We're conceding the presence of primary entry-types that
+					// don't necessarily have a SecondaryCount field (which is
+					// the qualification to be considered a
+					// `PrimaryDirectoryEntry`). Therefore, if our primary was
+					// not a `PrimaryDirectoryEntry` *but* it's still
+					// purportedly a primary entry, call the callback with an
+					// empty list for the secondary entries (the
+					// `secondaryEntries` entry list will always be empty here
+					// due to above).
+
+					err := cb(primaryEntry, secondaryEntries)
+					log.PanicIf(err)
+				}
 
 				entryNumber++
 
@@ -208,4 +152,88 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries() (err error) {
 	log.PanicIf(err)
 
 	return nil
+}
+
+type IndexedDirectoryEntry struct {
+	PrimaryEntry     DirectoryEntry
+	SecondaryEntries []DirectoryEntry
+	Extra            map[string]interface{}
+}
+
+type DirectoryEntryIndex map[string][]IndexedDirectoryEntry
+
+func (dei DirectoryEntryIndex) Dump() {
+	fmt.Printf("Directory Entry Index\n")
+	fmt.Printf("=====================\n")
+	fmt.Printf("\n")
+
+	for typeName, ideList := range dei {
+		for _, ide := range ideList {
+			fmt.Printf("%s\n", typeName)
+			fmt.Printf("--------------------\n")
+			fmt.Printf("Primary: %s\n", ide.PrimaryEntry)
+
+			for i, secondaryEntry := range ide.SecondaryEntries {
+				fmt.Printf("Secondary (%d): %s\n", i, secondaryEntry)
+			}
+
+			fmt.Printf("\n")
+
+			if len(ide.Extra) > 0 {
+				fmt.Printf("Extra:\n")
+
+				for k, v := range ide.Extra {
+					fmt.Printf("> %s: %s\n", k, v)
+				}
+
+				fmt.Printf("\n")
+			}
+		}
+	}
+}
+
+func (en *ExfatNavigator) IndexDirectoryEntries() (index DirectoryEntryIndex, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	index = make(DirectoryEntryIndex)
+
+	cb := func(primaryEntry DirectoryEntry, secondaryEntries []DirectoryEntry) (err error) {
+		extra := make(map[string]interface{})
+
+		ide := IndexedDirectoryEntry{
+			PrimaryEntry:     primaryEntry,
+			SecondaryEntries: secondaryEntries,
+			Extra:            extra,
+		}
+
+		if _, ok := primaryEntry.(*ExfatFileDirectoryEntry); ok == true {
+			mf := MultipartFilename(secondaryEntries)
+			complete_filename := mf.Filename()
+
+			extra["complete_filename"] = complete_filename
+		}
+
+		typeName := primaryEntry.TypeName()
+		if list_, found := index[typeName]; found == true {
+			index[typeName] = append(list_, ide)
+		} else {
+			index[typeName] = []IndexedDirectoryEntry{ide}
+		}
+
+		return nil
+	}
+
+	err = en.EnumerateDirectoryEntries(cb)
+	log.PanicIf(err)
+
+	return index, nil
 }
