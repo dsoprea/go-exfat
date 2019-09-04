@@ -542,6 +542,16 @@ func (ExfatTexFATDirectoryEntry) TypeName() string {
 	return "TexFAT"
 }
 
+type GeneralSecondaryFlags uint8
+
+func (gsf GeneralSecondaryFlags) IsAllocationPossible() bool {
+	return gsf&1 > 0
+}
+
+func (gsf GeneralSecondaryFlags) NoFatChain() bool {
+	return gsf&2 > 0
+}
+
 type ExfatStreamExtensionDirectoryEntry struct {
 
 	// TODO(dustin): It's unclear where the names for the one or more streams under each file are stored.
@@ -550,7 +560,7 @@ type ExfatStreamExtensionDirectoryEntry struct {
 	EntryType EntryType
 
 	// GeneralSecondaryFlags: This field is mandatory and Section 7.6.2 defines its contents.
-	GeneralSecondaryFlags uint8
+	GeneralSecondaryFlags GeneralSecondaryFlags
 
 	// Reserved1: This field is mandatory and its contents are reserved.
 	Reserved1 [1]byte
@@ -598,7 +608,7 @@ type ExfatFileNameDirectoryEntry struct {
 	EntryType EntryType
 
 	// GeneralSecondaryFlags: This field is mandatory and Section 7.7.2 defines its contents.
-	GeneralSecondaryFlags uint8
+	GeneralSecondaryFlags GeneralSecondaryFlags
 
 	// FileName: This field is mandatory and Section 7.7.3 defines its contents.
 	FileName [30]byte
@@ -640,7 +650,7 @@ type ExfatVendorExtensionDirectoryEntry struct {
 	EntryType EntryType
 
 	// GeneralSecondaryFlags: This field is mandatory and Section 7.8.2 defines its contents.
-	GeneralSecondaryFlags uint8
+	GeneralSecondaryFlags GeneralSecondaryFlags
 
 	// VendorGuid: This field is mandatory and Section 7.8.3 defines its contents.
 	VendorGuid [16]byte
@@ -662,7 +672,7 @@ type ExfatVendorAllocationDirectoryEntry struct {
 	EntryType EntryType
 
 	// GeneralSecondaryFlags: This field is mandatory and Section 7.9.2 defines its contents.
-	GeneralSecondaryFlags uint8
+	GeneralSecondaryFlags GeneralSecondaryFlags
 
 	// VendorGuid: This field is mandatory and Section 7.9.3 defines its contents.
 	VendorGuid [16]byte
