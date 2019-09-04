@@ -225,6 +225,79 @@ func (dei DirectoryEntryIndex) Filenames() (filenames map[string]bool) {
 	return filenames
 }
 
+func (dei DirectoryEntryIndex) FileCount() (count int) {
+	if fileIdeList, found := dei["File"]; found == true {
+		count = len(fileIdeList)
+	}
+
+	return count
+}
+
+func (dei DirectoryEntryIndex) GetFile(i int) (filename string, fdf *ExfatFileDirectoryEntry) {
+	ide := dei["File"][i]
+	return ide.Extra["complete_filename"].(string), ide.PrimaryEntry.(*ExfatFileDirectoryEntry)
+}
+
+func (dei DirectoryEntryIndex) FindIndexedFile(filename string) (ide IndexedDirectoryEntry, found bool) {
+	for i := 0; i < dei.FileCount(); i++ {
+		ide := dei["File"][i]
+		if ide.Extra["complete_filename"].(string) == filename {
+			return ide, true
+		}
+	}
+
+	return ide, false
+}
+
+func (dei DirectoryEntryIndex) FindIndexedFileDirectoryEntry(filename, entryTypeName string, i int) (de DirectoryEntry) {
+	ide, found := dei.FindIndexedFile(filename)
+	if found == false {
+		return nil
+	}
+
+	if ide.PrimaryEntry.TypeName() == entryTypeName {
+		// Since there are no collisions between primary and secondary entry-
+		// type names, if they entered a primary entry-type name and a non-zero
+		// index, this must've been intentional but a mistake.
+		if i != 0 {
+			log.Panicf("index must be zero when searching for a primary directory-entry type: [%s] (%d)", entryTypeName, i)
+		}
+
+		return ide.PrimaryEntry
+	}
+
+	hits := 0
+	for _, currentDe := range ide.SecondaryEntries {
+		if currentDe.TypeName() == entryTypeName {
+			if hits == i {
+				return currentDe
+			}
+
+			hits++
+		}
+	}
+
+	return nil
+}
+
+func (dei DirectoryEntryIndex) FindIndexedFileFileDirectoryEntry(filename string) (fdf *ExfatFileDirectoryEntry) {
+	de := dei.FindIndexedFileDirectoryEntry(filename, "File", 0)
+	if de == nil {
+		return nil
+	}
+
+	return de.(*ExfatFileDirectoryEntry)
+}
+
+func (dei DirectoryEntryIndex) FindIndexedFileStreamExtensionDirectoryEntry(filename string) (sede *ExfatStreamExtensionDirectoryEntry) {
+	de := dei.FindIndexedFileDirectoryEntry(filename, "StreamExtension", 0)
+	if de == nil {
+		return nil
+	}
+
+	return de.(*ExfatStreamExtensionDirectoryEntry)
+}
+
 func (en *ExfatNavigator) IndexDirectoryEntries() (index DirectoryEntryIndex, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
