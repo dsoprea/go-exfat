@@ -1,3 +1,5 @@
+// This package manages the low-level, on-disk storage structures.
+
 package exfat
 
 import (

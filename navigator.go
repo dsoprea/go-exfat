@@ -1,3 +1,6 @@
+// This package supports enumerating/indexing the entries for a single
+// directory.
+
 package exfat
 
 import (

@@ -1,3 +1,5 @@
+// This package supports browsing the filesystem at the tree level.
+
 package exfat
 
 import (
