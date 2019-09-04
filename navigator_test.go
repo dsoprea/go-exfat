@@ -6,8 +6,13 @@ import (
 	"sort"
 	"testing"
 
+	"crypto/sha1"
+
 	"github.com/dsoprea/go-logging"
 )
+
+// TODO(dustin): !! Add static get-data test to ExfatReader for known file cluster number.
+// TODO(dustin): !! Make sure we support getting data when stream's NoFatChain is (true).
 
 // func TestExfatNavigator_EnumerateDirectoryEntries(t *testing.T) {
 // 	defer func() {
@@ -93,6 +98,49 @@ func TestExfatNavigator_Dump(t *testing.T) {
 	log.PanicIf(err)
 
 	index.Dump()
+}
+
+func TestExfatNavigator__GetFileData(t *testing.T) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			err := errRaw.(error)
+
+			log.PrintError(err)
+			t.Fatalf("Test failed.")
+		}
+	}()
+
+	// Setup.
+
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	firstClusterNumber := er.FirstClusterOfRootDirectory()
+	en := NewExfatNavigator(er, firstClusterNumber)
+
+	// Get index.
+
+	index, err := en.IndexDirectoryEntries()
+	log.PanicIf(err)
+
+	sede := index.FindIndexedFileStreamExtensionDirectoryEntry("2-delahaye-type-165-cabriolet-dsc_8025.jpg")
+
+	h := sha1.New()
+
+	err = er.WriteFromClusterChain(sede.FirstCluster, sede.DataLength, h)
+	log.PanicIf(err)
+
+	digest := h.Sum(nil)
+	digestString := fmt.Sprintf("%040x", digest)
+
+	expectedString := "a2219fa800ae2325003d8d4f5122b37f12f1e18e"
+	if digestString != expectedString {
+		t.Fatalf("Data not recovered correctly: [%s] != [%s]", digestString, expectedString)
+	}
 }
 
 func TestExfatNavigator_IndexDirectoryEntries(t *testing.T) {

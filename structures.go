@@ -847,6 +847,10 @@ func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb Cluste
 
 	currentClusterNumber := startingClusterNumber
 	for {
+		if currentClusterNumber < 2 {
+			log.Panicf("cluster-number too low: (%d)", currentClusterNumber)
+		}
+
 		ec := er.GetCluster(currentClusterNumber)
 
 		doContinue, err := cb(ec)
@@ -860,8 +864,8 @@ func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb Cluste
 			log.Panicf("cluster exceeds FAT bounds: (%d) >= (%d)", currentClusterNumber, len(er.activeFat))
 		}
 
-		nextMappedCluster := er.activeFat[currentClusterNumber]
-		if nextMappedCluster.IsBad() == true {
+		nextMappedCluster := er.activeFat[currentClusterNumber-2]
+		if nextMappedCluster.IsLast() == true {
 			break
 		}
 
@@ -960,6 +964,67 @@ func (er *ExfatReader) Parse() (err error) {
 	return nil
 }
 
+// WriteFromClusterChain enumerates all sectors from all clusters starting
+// from the given one.
+func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize uint64, w io.Writer) (err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	// TODO(dustin): !! Add test
+
+	sectorSize := er.SectorSize()
+	tailFragmentSize := dataSize % uint64(sectorSize)
+
+	written := uint64(0)
+	sectorCount := uint32(0)
+	doContinue := true
+
+	clusterCb := func(ec *ExfatCluster) (doContinueInner bool, err error) {
+		sectorCb := func(sectorNumber uint32, data []byte) (bool, error) {
+			// If we're in the last sector.
+			if uint64((sectorCount+1)*sectorSize) > dataSize {
+				// If we're in the last sector and the file-size is not an exact
+				// multiple of sectors.
+				if tailFragmentSize > 0 {
+					data = data[:tailFragmentSize]
+				}
+
+				doContinue = false
+			}
+
+			_, err = w.Write(data)
+			log.PanicIf(err)
+
+			written += uint64(len(data))
+			sectorCount++
+
+			return doContinue, nil
+		}
+
+		err = ec.EnumerateSectors(sectorCb)
+		log.PanicIf(err)
+
+		return doContinue, nil
+	}
+
+	err = er.EnumerateClusters(firstClusterNumber, clusterCb)
+	log.PanicIf(err)
+
+	if written != dataSize {
+		log.Panicf("written bytes do not equal data-size: (%d) != (%d)", written, dataSize)
+	}
+
+	return nil
+}
+
 // Cluster manages reads on the sectors in a cluster and checks that the
 // requested sectors are within bounds.
 type ExfatCluster struct {
@@ -975,9 +1040,9 @@ func newExfatCluster(er *ExfatReader, clusterNumber uint32) (ec *ExfatCluster, e
 
 	// TODO(dustin): !! Add test.
 
-	if clusterNumber == 0 {
-		log.Panicf("cluster-number can not be (0)")
-	}
+	// if clusterNumber == 0 {
+	// 	log.Panicf("cluster-number can not be (0)")
+	// }
 
 	sectorsPerCluster := er.SectorsPerCluster()
 	sectorSize := er.SectorSize()
