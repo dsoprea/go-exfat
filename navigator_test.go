@@ -65,6 +65,36 @@ import (
 // 	// }
 // }
 
+func TestExfatNavigator_Dump(t *testing.T) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			err := errRaw.(error)
+
+			log.PrintError(err)
+			t.Fatalf("Test failed.")
+		}
+	}()
+
+	// Setup.
+
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	firstClusterNumber := er.FirstClusterOfRootDirectory()
+	en := NewExfatNavigator(er, firstClusterNumber)
+
+	// Get index.
+
+	index, err := en.IndexDirectoryEntries()
+	log.PanicIf(err)
+
+	index.Dump()
+}
+
 func TestExfatNavigator_IndexDirectoryEntries(t *testing.T) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
@@ -148,5 +178,36 @@ func TestExfatNavigator_IndexDirectoryEntries(t *testing.T) {
 		}
 
 		t.Fatalf("Root filenames not correct: %v != %v", files, expectedFilenames)
+	}
+}
+
+func TestDirectoryEntryIndex_Filenames(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	firstClusterNumber := er.FirstClusterOfRootDirectory()
+	en := NewExfatNavigator(er, firstClusterNumber)
+
+	index, err := en.IndexDirectoryEntries()
+	log.PanicIf(err)
+
+	filenames := index.Filenames()
+
+	expectedFilenames := map[string]bool{
+		"testdirectory":  true,
+		"testdirectory2": true,
+		"testdirectory3": true,
+		"2-delahaye-type-165-cabriolet-dsc_8025.jpg": false,
+		"8fd71ab132c59bf33cd7890c0acebf12.jpg":       false,
+		"064cbfd4-cec3-11e9-926d-c362c80fab7b":       false,
+		"79c6d31a-cca1-11e9-8325-9746d045e868":       false,
+	}
+
+	if reflect.DeepEqual(filenames, expectedFilenames) != true {
+		t.Fatalf("Filenames not correct: %v != %v", filenames, expectedFilenames)
 	}
 }

@@ -314,6 +314,33 @@ func (et ExfatTimestamp) String() string {
 	return fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d", et.Year(), et.Month(), et.Day(), et.Hour(), et.Minute(), et.Second())
 }
 
+type FileAttributes uint16
+
+func (fa FileAttributes) IsReadOnly() bool {
+	return fa&1 > 0
+}
+
+func (fa FileAttributes) IsHidden() bool {
+	return fa&2 > 0
+}
+
+func (fa FileAttributes) IsSystem() bool {
+	return fa&4 > 0
+}
+
+func (fa FileAttributes) IsDirectory() bool {
+	return fa&16 > 0
+}
+
+func (fa FileAttributes) IsArchive() bool {
+	return fa&32 > 0
+}
+
+func (fa FileAttributes) String() string {
+	return fmt.Sprintf("FileAttributes<IS-READONLY=[%v] IS-HIDDEN=[%v] IS-SYSTEM=[%v] IS-DIRECTORY=[%v] IS-ARCHIVE=[%v]>",
+		fa.IsReadOnly(), fa.IsHidden(), fa.IsSystem(), fa.IsDirectory(), fa.IsArchive())
+}
+
 type ExfatFileDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.4.1 defines its contents.
 	EntryType EntryType
@@ -325,7 +352,7 @@ type ExfatFileDirectoryEntry struct {
 	SetChecksum uint16
 
 	// FileAttributes: This field is mandatory and Section 7.4.4 defines its contents.
-	FileAttributes uint16
+	FileAttributes FileAttributes
 
 	// Reserved1: This field is mandatory and its contents are reserved.
 	Reserved1 uint16

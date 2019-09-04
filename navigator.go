@@ -3,6 +3,7 @@ package exfat
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/dsoprea/go-logging"
 )
@@ -168,28 +169,60 @@ func (dei DirectoryEntryIndex) Dump() {
 	fmt.Printf("\n")
 
 	for typeName, ideList := range dei {
-		for _, ide := range ideList {
-			fmt.Printf("%s\n", typeName)
-			fmt.Printf("--------------------\n")
-			fmt.Printf("Primary: %s\n", ide.PrimaryEntry)
+		fmt.Printf("%s\n", typeName)
+		fmt.Println(strings.Repeat("-", len(typeName)))
+		fmt.Printf("\n")
 
-			for i, secondaryEntry := range ide.SecondaryEntries {
-				fmt.Printf("Secondary (%d): %s\n", i, secondaryEntry)
+		for i, ide := range ideList {
+			fmt.Printf("# %d\n", i)
+			fmt.Printf("\n")
+
+			fmt.Printf("  Primary: %s\n", ide.PrimaryEntry)
+
+			for j, secondaryEntry := range ide.SecondaryEntries {
+				fmt.Printf("  Secondary (%d): %s\n", j, secondaryEntry)
 			}
 
 			fmt.Printf("\n")
 
 			if len(ide.Extra) > 0 {
-				fmt.Printf("Extra:\n")
+				fmt.Printf("  Extra:\n")
 
 				for k, v := range ide.Extra {
-					fmt.Printf("> %s: %s\n", k, v)
+					fmt.Printf("    %s: %s\n", k, v)
 				}
+
+				fmt.Printf("\n")
+			}
+
+			if fdf, ok := ide.PrimaryEntry.(*ExfatFileDirectoryEntry); ok == true {
+				fmt.Printf("  Attributes:\n")
+
+				fmt.Printf("    Read Only? [%v]\n", fdf.FileAttributes.IsReadOnly())
+				fmt.Printf("    Hidden? [%v]\n", fdf.FileAttributes.IsHidden())
+				fmt.Printf("    System? [%v]\n", fdf.FileAttributes.IsSystem())
+				fmt.Printf("    Directory? [%v]\n", fdf.FileAttributes.IsDirectory())
+				fmt.Printf("    Archive? [%v]\n", fdf.FileAttributes.IsArchive())
 
 				fmt.Printf("\n")
 			}
 		}
 	}
+}
+
+func (dei DirectoryEntryIndex) Filenames() (filenames map[string]bool) {
+	fileIdeList, found := dei["File"]
+	if found == true {
+		filenames = make(map[string]bool, len(fileIdeList))
+		for _, ide := range fileIdeList {
+			filename := ide.Extra["complete_filename"].(string)
+			filenames[filename] = ide.PrimaryEntry.(*ExfatFileDirectoryEntry).FileAttributes.IsDirectory()
+		}
+	} else {
+		filenames = make(map[string]bool, 0)
+	}
+
+	return filenames
 }
 
 func (en *ExfatNavigator) IndexDirectoryEntries() (index DirectoryEntryIndex, err error) {
