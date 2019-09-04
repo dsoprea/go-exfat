@@ -8,13 +8,13 @@ import (
 	"github.com/dsoprea/go-logging"
 )
 
-// TODO(dustin): !! Refactor this to load lazily.
-
 type TreeNode struct {
 	name string
 
 	isDirectory bool
 	sede        *ExfatStreamExtensionDirectoryEntry
+
+	loaded bool
 
 	childrenFolders sort.StringSlice
 	childrenFiles   sort.StringSlice
@@ -85,23 +85,23 @@ func (tn *TreeNode) GetChild(filename string) *TreeNode {
 	return tn.childrenMap[filename]
 }
 
-func (tn *TreeNode) Lookup(pathParts []string) *TreeNode {
+func (tn *TreeNode) Lookup(pathParts []string) (lastPathParts []string, lastNode *TreeNode, found *TreeNode) {
 
 	// TODO(dustin): !! Add tests.
 
 	if len(pathParts) == 0 {
 		// We've reached and found the last part.
-		return tn
+		return pathParts, tn, tn
 	}
 
 	childNode := tn.childrenMap[pathParts[0]]
 	if childNode == nil {
 		// An intermediate part was not found.
-		return nil
+		return pathParts, tn, nil
 	}
 
-	foundNode := childNode.Lookup(pathParts[1:])
-	return foundNode
+	lastPathParts, lastNode, found = childNode.Lookup(pathParts[1:])
+	return lastPathParts, lastNode, found
 }
 
 func (tn *TreeNode) AddChild(name string, isDirectory bool, sede *ExfatStreamExtensionDirectoryEntry) *TreeNode {
@@ -179,13 +179,12 @@ func (tree *Tree) loadDirectory(clusterNumber uint32, node *TreeNode) (err error
 
 	for filename, isDirectory := range filenames {
 		sede := index.FindIndexedFileStreamExtensionDirectoryEntry(filename)
-		childNode := node.AddChild(filename, isDirectory, sede)
 
-		if isDirectory == true {
-			err := tree.loadDirectory(sede.FirstCluster, childNode)
-			log.PanicIf(err)
-		}
+		// Since we load lazily, we won't immediately load the child.
+		node.AddChild(filename, isDirectory, sede)
 	}
+
+	node.loaded = true
 
 	return nil
 }
@@ -212,8 +211,38 @@ func (tree *Tree) Load() (err error) {
 	return nil
 }
 
-func (tree *Tree) Lookup(pathParts []string) (node *TreeNode) {
-	return tree.rootNode.Lookup(pathParts)
+func (tree *Tree) Lookup(pathParts []string) (node *TreeNode, err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
+	for {
+		lastPathParts, lastNode, foundNode := tree.rootNode.Lookup(pathParts)
+		if foundNode != nil {
+			// Shouldn't be possible.
+			if len(lastPathParts) != 0 {
+				log.Panicf("it looks like we found the node but the path-parts were not exhausted")
+			}
+
+			return foundNode, nil
+		}
+
+		// If we've already loaded all children for that node, return nil (find
+		// unsuccessful).
+		if lastNode.loaded == true {
+			return nil, nil
+		}
+
+		err := tree.loadDirectory(lastNode.sede.FirstCluster, lastNode)
+		log.PanicIf(err)
+	}
 }
 
 type TreeVisitorFunc func(pathParts []string, node *TreeNode) (err error)
@@ -267,6 +296,12 @@ func (tree *Tree) visit(pathParts []string, node *TreeNode, cb TreeVisitorFunc) 
 		childPathParts[len(childPathParts)-1] = childNode.name
 
 		if childNode.isDirectory == true {
+			// Finish loading node.
+			if childNode.loaded == false {
+				err := tree.loadDirectory(childNode.sede.FirstCluster, childNode)
+				log.PanicIf(err)
+			}
+
 			err := tree.visit(childPathParts, childNode, cb)
 			log.PanicIf(err)
 		} else {

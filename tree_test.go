@@ -96,7 +96,9 @@ func TestTree_Lookup__Hit(t *testing.T) {
 	err = tree.Load()
 	log.PanicIf(err)
 
-	node := tree.Lookup([]string{"testdirectory2", "ff7b94be-cec2-11e9-b7b1-6b2e61bd775c"})
+	node, err := tree.Lookup([]string{"testdirectory2", "ff7b94be-cec2-11e9-b7b1-6b2e61bd775c"})
+	log.PanicIf(err)
+
 	if node.Name() != "ff7b94be-cec2-11e9-b7b1-6b2e61bd775c" {
 		t.Fatalf("Found node not correct (hit).")
 	}
@@ -115,7 +117,9 @@ func TestTree_Lookup__Miss(t *testing.T) {
 	err = tree.Load()
 	log.PanicIf(err)
 
-	node := tree.Lookup([]string{"invalid", "path"})
+	node, err := tree.Lookup([]string{"invalid", "path"})
+	log.PanicIf(err)
+
 	if node != nil {
 		t.Fatalf("Found node not correct (miss).")
 	}
