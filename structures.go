@@ -1024,7 +1024,7 @@ func (er *ExfatReader) Parse() (err error) {
 
 // WriteFromClusterChain enumerates all sectors from all clusters starting
 // from the given one.
-func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize uint64, useFat bool, w io.Writer) (err error) {
+func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize uint64, useFat bool, w io.Writer) (visitedClusters, visitedSectors []uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -1045,8 +1045,37 @@ func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize
 	sectorCount := uint32(0)
 	doContinue := true
 
-	clusterCb := func(ec *ExfatCluster) (doContinueInner bool, err error) {
-		sectorCb := func(sectorNumber uint32, data []byte) (bool, error) {
+	visitedClusters = make([]uint32, 0)
+	visitedSectors = make([]uint32, 0)
+
+	clusterCb := func(ec *ExfatCluster) (doContinueCluster bool, err error) {
+		defer func() {
+			if errRaw := recover(); errRaw != nil {
+				var ok bool
+				if err, ok = errRaw.(error); ok == true {
+					err = log.Wrap(err)
+				} else {
+					err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+				}
+			}
+		}()
+
+		visitedClusters = append(visitedClusters, ec.ClusterNumber())
+
+		sectorCb := func(sectorNumber uint32, data []byte) (doContinueSector bool, err error) {
+			defer func() {
+				if errRaw := recover(); errRaw != nil {
+					var ok bool
+					if err, ok = errRaw.(error); ok == true {
+						err = log.Wrap(err)
+					} else {
+						err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+					}
+				}
+			}()
+
+			visitedSectors = append(visitedSectors, sectorNumber)
+
 			// If we're in the last sector.
 			if uint64((sectorCount+1)*sectorSize) > dataSize {
 				// If we're in the last sector and the file-size is not an exact
@@ -1080,7 +1109,7 @@ func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize
 		log.Panicf("written bytes do not equal data-size: (%d) != (%d)", written, dataSize)
 	}
 
-	return nil
+	return visitedClusters, visitedSectors, nil
 }
 
 // Cluster manages reads on the sectors in a cluster and checks that the

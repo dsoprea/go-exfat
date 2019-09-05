@@ -14,6 +14,7 @@ type rootParameters struct {
 	FilesystemFilepath string `short:"f" long:"filesystem-filepath" description:"File-path of exFAT filesystem" required:"true"`
 	ExtractFilepath    string `short:"e" long:"extract-filepath" description:"File-path to extract (use forward slashes)" required:"true"`
 	OutputFilepath     string `short:"o" long:"output-filepath" description:"File-path to write to ('-' for STDOUT)" required:"true"`
+	PrintDataInfo      bool   `short:"d" long:"detail" description:"Whether to print additional cluster and sector info (only if not extracting to STDOUT)"`
 }
 
 var (
@@ -85,10 +86,32 @@ func main() {
 
 	useFat := sde.GeneralSecondaryFlags.NoFatChain() == false
 
-	err = er.WriteFromClusterChain(sde.FirstCluster, sde.ValidDataLength, useFat, g)
+	clusters, sectors, err := er.WriteFromClusterChain(sde.FirstCluster, sde.ValidDataLength, useFat, g)
 	log.PanicIf(err)
 
 	if rootArguments.OutputFilepath != "-" {
 		fmt.Printf("(%d) bytes written.\n", sde.ValidDataLength)
+		fmt.Printf("\n")
+
+		if rootArguments.PrintDataInfo == true {
+
+			fmt.Printf("Clusters:")
+
+			for _, clusterNumber := range clusters {
+				fmt.Printf(" %d", clusterNumber)
+			}
+
+			fmt.Printf("\n")
+
+			fmt.Printf("Sectors:")
+
+			for _, sectorNumber := range sectors {
+				fmt.Printf(" %d", sectorNumber)
+			}
+
+			fmt.Printf("\n")
+
+			fmt.Printf("\n")
+		}
 	}
 }
