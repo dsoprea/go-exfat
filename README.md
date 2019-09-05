@@ -1,19 +1,20 @@
 # Overview
 
-An exFAT implementation based on the Microsoft-published specs:
-
-https://docs.microsoft.com/en-us/windows/win32/fileio/exfat-specification
-
-
-# Goals
-
-To create a reader-only implementation of exFAT that enabled access using
-familiar and accepted Go patterns.
+This is a read-only exFAT implementation based on the Microsoft-published
+specs ([exFAT file system specification](https://docs.microsoft.com/en-us/windows/win32/fileio/exfat-specification)).
+The primary purpose of this project is to provide an unprivileged API to access
+an exFAT filesystem from any platform. This project also provides several tools
+that can be used to explore the filesystem and extract files from it.
 
 
-# Status
+# Command-Line Tools
 
-Complete.
+- *exfat_print_boot_sector_header*: Dump filesystem parameters. Largely sourced
+  from the boot-sector header.
+- *exfat_list_contents*: List all files with or without complete directory-entry
+  information.
+- *exfat_extract_file*: Extract a single file to a file or STDOUT. May also be
+  used to print all clusters and sectors visited for the extraction.
 
 
 # Notes
