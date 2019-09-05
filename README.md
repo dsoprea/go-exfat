@@ -1,3 +1,8 @@
+[![GoDoc](https://godoc.org/github.com/dsoprea/go-exfat?status.svg)](https://godoc.org/github.com/dsoprea/go-exfat)
+[![Build Status](https://travis-ci.org/dsoprea/go-exfat.svg?branch=master)](https://travis-ci.org/dsoprea/go-exfat)
+[![Coverage Status](https://coveralls.io/repos/github/dsoprea/go-exfat/badge.svg?branch=master)](https://coveralls.io/github/dsoprea/go-exfat?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dsoprea/go-exfat)](https://goreportcard.com/report/github.com/dsoprea/go-exfat)
+
 # Overview
 
 This is a read-only exFAT implementation based on the Microsoft-published
