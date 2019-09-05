@@ -62,7 +62,7 @@ func main() {
 
 		if rootArguments.FilenameFilter != "" {
 			// Since the filepaths are separated by Windows-standard backward-
-			// slashes, they won't necessarily split correcty on all platforms.
+			// slashes, they won't necessarily split correctly on all platforms.
 			// Therefore, we'll just use the name from the node.
 			filename := node.Name()
 

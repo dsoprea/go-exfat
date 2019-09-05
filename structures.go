@@ -34,6 +34,8 @@ type bootRegion struct {
 	sectorSize uint32
 }
 
+// ExfatReader knows where to find all of the statically-located structures and
+// how to parse them, and how to find clusters and chains of clusters.
 type ExfatReader struct {
 	rs io.ReadSeeker
 
@@ -42,6 +44,7 @@ type ExfatReader struct {
 	activeFat Fat
 }
 
+// NewExfatReader returns a new instance of ExfatReader.
 func NewExfatReader(rs io.ReadSeeker) *ExfatReader {
 	return &ExfatReader{
 		rs: rs,
@@ -71,36 +74,37 @@ func (er *ExfatReader) parseN(byteCount int, x interface{}) (err error) {
 	return nil
 }
 
+// BootSectorHeader describes the main set of filesystem parameters.
 type BootSectorHeader struct {
-	// This field is mandatory and Section 3.1.1 defines its contents.
+	// JumpBoot: This field is mandatory and Section 3.1.1 defines its contents.
 	//
 	// The JumpBoot field shall contain the jump instruction for CPUs common in personal computers, which, when executed, "jumps" the CPU to execute the boot-strapping instructions in the BootCode field.
 	//
 	// The valid value for this field is (in order of low-order byte to high-order byte) EBh 76h 90h.
 	JumpBoot [3]byte
 
-	// This field is mandatory and Section 3.1.2 defines its contents.
+	// FileSystemName: This field is mandatory and Section 3.1.2 defines its contents.
 	//
 	// The FileSystemName field shall contain the name of the file system on the volume.
 	//
 	// The valid value for this field is, in ASCII characters, "EXFAT   ", which includes three trailing white spaces.
 	FileSystemName [8]byte
 
-	// This field is mandatory and Section 3.1.3 defines its contents.
+	// MustBeZero: This field is mandatory and Section 3.1.3 defines its contents.
 	//
 	// The MustBeZero field shall directly correspond with the range of bytes the packed BIOS parameter block consumes on FAT12/16/32 volumes.
 	//
 	// The valid value for this field is 0, which helps to prevent FAT12/16/32 implementations from mistakenly mounting an exFAT volume.
 	MustBeZero [53]byte
 
-	// This field is mandatory and Section 3.1.4 defines its contents.
+	// PartitionOffset: This field is mandatory and Section 3.1.4 defines its contents.
 	//
 	// The PartitionOffset field shall describe the media-relative sector offset of the partition which hosts the given exFAT volume. This field aids boot-strapping from the volume using extended INT 13h on personal computers.
 	//
 	// All possible values for this field are valid; however, the value 0 indicates implementations shall ignore this field.
 	PartitionOffset uint64
 
-	// This field is mandatory and Section 3.1.5 defines its contents.
+	// VolumeLength: This field is mandatory and Section 3.1.5 defines its contents.
 	//
 	// The VolumeLength field shall describe the size of the given exFAT volume in sectors.
 	//
@@ -113,7 +117,7 @@ type BootSectorHeader struct {
 	// However, if the size of the Excess Space sub-region is 0, then the value of this field is ClusterHeapOffset + (232- 11) * 2SectorsPerClusterShift.
 	VolumeLength uint64
 
-	// This field is mandatory and Section 3.1.6 defines its contents.
+	// FatOffset: This field is mandatory and Section 3.1.6 defines its contents.
 	//
 	// The FatOffset field shall describe the volume-relative sector offset of the First FAT. This field enables implementations to align the First FAT to the characteristics of the underlying storage media.
 	//
@@ -124,7 +128,7 @@ type BootSectorHeader struct {
 	// At most ClusterHeapOffset - (FatLength * NumberOfFats), which accounts for the sectors the Cluster Heap consumes
 	FatOffset uint32
 
-	// This field is mandatory and Section 3.1.7 defines its contents.
+	// FatLength: This field is mandatory and Section 3.1.7 defines its contents.
 	//
 	// The FatLength field shall describe the length, in sectors, of each FAT table (the volume may contain up to two FATs).
 	//
@@ -137,7 +141,7 @@ type BootSectorHeader struct {
 	// This field may contain a value in excess of its lower bound (as described above) to enable the Second FAT, if present, to also be aligned to the characteristics of the underlying storage media. The contents of the space which exceeds what the FAT itself requires, if any, are undefined.
 	FatLength uint32
 
-	// This field is mandatory and Section 3.1.8 defines its contents.
+	// ClusterHeapOffset: This field is mandatory and Section 3.1.8 defines its contents.
 	//
 	// The ClusterHeapOffset field shall describe the volume-relative sector offset of the Cluster Heap. This field enables implementations to align the Cluster Heap to the characteristics of the underlying storage media.
 	//
@@ -148,7 +152,7 @@ type BootSectorHeader struct {
 	// At most 232- 1 or VolumeLength - (ClusterCount * 2SectorsPerClusterShift), whichever calculation is less
 	ClusterHeapOffset uint32
 
-	// This field is mandatory and Section 3.1.9 defines its contents.
+	// ClusterCount: This field is mandatory and Section 3.1.9 defines its contents.
 	//
 	// The ClusterCount field shall describe the number of clusters the Cluster Heap contains.
 	//
@@ -161,7 +165,7 @@ type BootSectorHeader struct {
 	// The value of the ClusterCount field determines the minimum size of a FAT. To avoid extremely large FATs, implementations can control the number of clusters in the Cluster Heap by increasing the cluster size (via the SectorsPerClusterShift field). This specification recommends no more than 224- 2 clusters in the Cluster Heap. However, implementations shall be able to handle volumes with up to 232- 11 clusters in the Cluster Heap.
 	ClusterCount uint32
 
-	// This field is mandatory and Section 3.1.10 defines its contents.
+	// FirstClusterOfRootDirectory: This field is mandatory and Section 3.1.10 defines its contents.
 	//
 	// The FirstClusterOfRootDirectory field shall contain the cluster index of the first cluster of the root directory. Implementations should make every effort to place the first cluster of the root directory in the first non-bad cluster after the clusters the Allocation Bitmap and Up-case Table consume.
 	//
@@ -172,14 +176,14 @@ type BootSectorHeader struct {
 	// At most ClusterCount + 1, the index of the last cluster in the Cluster Heap
 	FirstClusterOfRootDirectory uint32
 
-	// This field is mandatory and Section 3.1.11 defines its contents.
+	// VolumeSerialNumber: This field is mandatory and Section 3.1.11 defines its contents.
 	//
 	// The VolumeSerialNumber field shall contain a unique serial number. This assists implementations to distinguish among different exFAT volumes. Implementations should generate the serial number by combining the date and time of formatting the exFAT volume. The mechanism for combining date and time to form a serial number is implementation-specific.
 	//
 	// All possible values for this field are valid.
 	VolumeSerialNumber uint32
 
-	// This field is mandatory and Section 3.1.12 defines its contents.
+	// FileSystemRevision: This field is mandatory and Section 3.1.12 defines its contents.
 	//
 	// The FileSystemRevision field shall describe the major and minor revision numbers of the exFAT structures on the given volume.
 	//
@@ -194,14 +198,14 @@ type BootSectorHeader struct {
 	// The revision number of exFAT this specification describes is 1.00. Implementations of this specification should mount any exFAT volume with major revision number 1 and shall not mount any exFAT volume with any other major revision number. Implementations shall honor the minor revision number and shall not perform operations or create any file system structures not described in the given minor revision number's corresponding specification.
 	FileSystemRevision [2]uint8
 
-	// This field is mandatory and Section 3.1.13 defines its contents.
+	// VolumeFlags: This field is mandatory and Section 3.1.13 defines its contents.
 	//
 	// The VolumeFlags field shall contain flags which indicate the status of various file system structures on the exFAT volume (see Table 5).
 	//
 	// Implementations shall not include this field when computing its respective Main Boot or Backup Boot region checksum. When referring to the Backup Boot Sector, implementations shall treat this field as stale.
-	VolumeFlags uint16
+	VolumeFlags VolumeFlags
 
-	// This field is mandatory and Section 3.1.14 defines its contents.
+	// BytesPerSectorShift: This field is mandatory and Section 3.1.14 defines its contents.
 	//
 	// The BytesPerSectorShift field shall describe the bytes per sector expressed as log~2~(N), where N is the number of bytes per sector. For example, for 512 bytes per sector, the value of this field is 9.
 	//
@@ -212,7 +216,7 @@ type BootSectorHeader struct {
 	// At most 12 (sector size of 4096 bytes), which is the memory page size of CPUs common in personal computers
 	BytesPerSectorShift uint8
 
-	// This field is mandatory and Section 3.1.15 defines its contents.
+	// SectorsPerClusterShift: This field is mandatory and Section 3.1.15 defines its contents.
 	//
 	// The SectorsPerClusterShift field shall describe the sectors per cluster expressed as log~2~(N), where N is number of sectors per cluster. For example, for 8 sectors per cluster, the value of this field is 3.
 	//
@@ -223,7 +227,7 @@ type BootSectorHeader struct {
 	// At most 25 - BytesPerSectorShift, which evaluates to a cluster size of 32MB
 	SectorsPerClusterShift uint8
 
-	// This field is mandatory and Section 3.1.16 defines its contents.
+	// NumberOfFats: This field is mandatory and Section 3.1.16 defines its contents.
 	//
 	// The NumberOfFats field shall describe the number of FATs and Allocation Bitmaps the volume contains.
 	//
@@ -234,14 +238,14 @@ type BootSectorHeader struct {
 	// 2, which indicates the volume contains the First FAT, Second FAT, First Allocation Bitmap, and Second Allocation Bitmap; this value is only valid for TexFAT volumes
 	NumberOfFats uint8
 
-	// This field is mandatory and Section 3.1.17 defines its contents.
+	// DriveSelect: This field is mandatory and Section 3.1.17 defines its contents.
 	//
 	// The DriveSelect field shall contain the extended INT 13h drive number, which aids boot-strapping from this volume using extended INT 13h on personal computers.
 	//
 	// All possible values for this field are valid. Similar fields in previous FAT-based file systems frequently contained the value 80h.
 	DriveSelect uint8
 
-	// This field is mandatory and Section 3.1.18 defines its contents.
+	// PercentInUse: This field is mandatory and Section 3.1.18 defines its contents.
 	//
 	// The PercentInUse field shall describe the percentage of clusters in the Cluster Heap which are allocated.
 	//
@@ -256,15 +260,15 @@ type BootSectorHeader struct {
 	// Implementations shall not include this field when computing its respective Main Boot or Backup Boot region checksum. When referring to the Backup Boot Sector, implementations shall treat this field as stale.
 	PercentInUse uint8
 
-	// This field is mandatory and its contents are reserved.
+	// Reserved: This field is mandatory and its contents are reserved.
 	Reserved [7]byte
 
-	// This field is mandatory and Section 3.1.19 defines its contents.
+	// BootCode: This field is mandatory and Section 3.1.19 defines its contents.
 	//
 	// The BootCode field shall contain boot-strapping instructions. Implementations may populate this field with the CPU instructions necessary for boot-strapping a computer system. Implementations which don't provide boot-strapping instructions shall initialize each byte in this field to F4h (the halt instruction for CPUs common in personal computers) as part of their format operation.
 	BootCode [390]byte
 
-	// This field is mandatory and Section 3.1.20 defines its contents.
+	// BootSignature: This field is mandatory and Section 3.1.20 defines its contents.
 	//
 	// The BootSignature field shall describe whether the intent of a given sector is for it to be a Boot Sector or not.
 	//
@@ -272,10 +276,8 @@ type BootSectorHeader struct {
 	BootSignature uint16
 }
 
-type VolumeFlags int
-
 const (
-	// This field is mandatory and Section 3.1.13.1 defines its contents.
+	// VolumeFlagActiveFat : This field is mandatory and Section 3.1.13.1 defines its contents.
 	//
 	// The ActiveFat field shall describe which FAT and Allocation Bitmap are active (and implementations shall use), as follows:
 	//
@@ -286,7 +288,7 @@ const (
 	// Implementations shall consider the inactive FAT and Allocation Bitmap as stale. Only TexFAT-aware implementations shall switch the active FAT and Allocation Bitmaps (see Section 7.1).
 	VolumeFlagActiveFat VolumeFlags = 1
 
-	// This field is mandatory and Section 3.1.13.2 defines its contents.
+	// VolumeFlagVolumeDirty : This field is mandatory and Section 3.1.13.2 defines its contents.
 	//
 	// The VolumeDirty field shall describe whether the volume is dirty or not, as follows:
 	//
@@ -299,7 +301,7 @@ const (
 	// If, upon mounting a volume, the value of this field is 0, implementations should set this field to 1 before updating file system metadata and clear this field to 0 afterwards, similar to the recommended write ordering described in Section 8.1.
 	VolumeFlagVolumeDirty = 2
 
-	// This field is mandatory and Section 3.1.13.3 defines its contents.
+	// VolumeFlagMediaFailure : This field is mandatory and Section 3.1.13.3 defines its contents.
 	//
 	// The MediaFailure field shall describe whether an implementation has discovered media failures or not, as follows:
 	//
@@ -314,9 +316,9 @@ const (
 	// The implementation has exhausted access retry algorithms, if any
 	//
 	// If, upon mounting a volume, the value of this field is 1, implementations which scan the entire volume for media failures and record all failures as "bad" clusters in the FAT (or otherwise resolve media failures) may clear the value of this field to 0.
-	VolumeFlagsMediaFailure = 4
+	VolumeFlagMediaFailure = 4
 
-	// This field is mandatory and Section 3.1.13.4 defines its contents.
+	// VolumeFlagClearToZero : This field is mandatory and Section 3.1.13.4 defines its contents.
 	//
 	// 3.1.13.4 ClearToZero Field
 	// The ClearToZero field does not have significant meaning in this specification.
@@ -329,22 +331,57 @@ const (
 	VolumeFlagClearToZero = 8
 )
 
-func (bsh BootSectorHeader) UseFirstFat() bool {
-	return VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat == 0
+// VolumeFlags represents some state flags for the filesystem.
+type VolumeFlags uint16
+
+// UseFirstFat indicates whether the first FAT should be used.
+func (vf VolumeFlags) UseFirstFat() bool {
+	return vf&VolumeFlagActiveFat == 0
 }
 
-func (bsh BootSectorHeader) UseSecondFat() bool {
-	return VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0
+// UseSecondFat indicates whether the second FAT should be used.
+func (vf VolumeFlags) UseSecondFat() bool {
+	return vf&VolumeFlagActiveFat > 0
 }
 
+// IsDirty indicates whether changes currently need to be flushed. This likely
+// indicates whether the filesystem is currently mounted.
+func (vf VolumeFlags) IsDirty() bool {
+	return vf&VolumeFlagVolumeDirty > 0
+}
+
+// HasHadMediaFailures indicates whether media-errors have been detected.
+func (vf VolumeFlags) HasHadMediaFailures() bool {
+	return vf&VolumeFlagMediaFailure > 0
+}
+
+// ClearToZero indicates that this flag should be cleared. Yeah.. That's what it
+// does.
+func (vf VolumeFlags) ClearToZero() bool {
+	return vf&VolumeFlagClearToZero > 0
+}
+
+// DumpBareIndented prints the volume flags with arbitrary indentation.
+func (vf VolumeFlags) DumpBareIndented(indent string) {
+	fmt.Printf("%sRaw Value: (%08b)\n", indent, vf)
+	fmt.Printf("%sUseFirstFat: [%v]\n", indent, vf.UseFirstFat())
+	fmt.Printf("%sUseSecondFat: [%v]\n", indent, vf.UseSecondFat())
+	fmt.Printf("%sIsDirty: [%v]\n", indent, vf.IsDirty())
+	fmt.Printf("%sHasHadMediaFailures: [%v]\n", indent, vf.HasHadMediaFailures())
+	fmt.Printf("%sClearToZero: [%v]\n", indent, vf.ClearToZero())
+}
+
+// SectorSize returns the effective sector-size.
 func (bsh BootSectorHeader) SectorSize() uint32 {
 	return uint32(math.Pow(2, float64(bsh.BytesPerSectorShift)))
 }
 
+// SectorsPerCluster returns the effective sectors-per-cluster count.
 func (bsh BootSectorHeader) SectorsPerCluster() uint32 {
 	return uint32(math.Pow(float64(2), float64(bsh.SectorsPerClusterShift)))
 }
 
+// Dump prints all of the BSH parameters along with the common calculated ones.
 func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("Boot Sector Header\n")
 	fmt.Printf("==================\n")
@@ -369,21 +406,12 @@ func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("\n")
 
 	fmt.Printf("VolumeFlags: (%d)\n", bsh.VolumeFlags)
-	fmt.Printf("- VolumeFlagActiveFat: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0)
-	fmt.Printf("- VolumeFlagVolumeDirty: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagVolumeDirty > 0)
-	fmt.Printf("- VolumeFlagsMediaFailure: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagsMediaFailure > 0)
-	fmt.Printf("- VolumeFlagClearToZero: [%v]\n", VolumeFlags(bsh.VolumeFlags)&VolumeFlagClearToZero > 0)
+	bsh.VolumeFlags.DumpBareIndented("  ")
 
 	fmt.Printf("\n")
 }
 
-// func (bsh BootSectorHeader) UseFirstFat() bool {
-// 	return VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat == 0
-// }
-
-// func (bsh BootSectorHeader) UseSecondFat() bool {
-// 	return VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0
-
+// Strings return a description of BSH.
 func (bsh BootSectorHeader) String() string {
 	return fmt.Sprintf("BootSector<SN=(0x%08x) REVISION=(0x%02x)-(0x%02x)>", bsh.VolumeSerialNumber, bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
 }
@@ -429,6 +457,8 @@ func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, sectorSize ui
 	return bsh, sectorSize, nil
 }
 
+// ExtendedBootCode is additional boot-code that might be involved in the boot
+// process.
 type ExtendedBootCode []byte
 
 func (er *ExfatReader) readExtendedBootSector(sectorSize uint32) (extendedBootCode ExtendedBootCode, err error) {
@@ -496,10 +526,12 @@ func (er *ExfatReader) readExtendedBootSectors(sectorSize uint32) (extendedBootC
 	return extendedBootCodeList, nil
 }
 
+// OemParameter is one OEM parameter.
 type OemParameter struct {
 	Parameter [48]byte
 }
 
+// OemParameters is the set of OEM parameters.
 type OemParameters struct {
 	Parameters [10]OemParameter
 }
@@ -656,8 +688,7 @@ func (er *ExfatReader) parseBootRegion() (br bootRegion, err error) {
 	log.PanicIf(err)
 
 	br = bootRegion{
-		bsh:        bsh,
-		sectorSize: sectorSize,
+		bsh: bsh,
 	}
 
 	return br, nil
@@ -685,16 +716,22 @@ func (er *ExfatReader) selectBootRegion(bootRegionMain, bootRegionBackup bootReg
 	return nil
 }
 
+// MappedCluster represents one cluster entry in the FAT.
 type MappedCluster uint32
 
+// IsBad indicates that this cluster has been marked as having one or more bad
+// sectors (which is somewhat a waste of space).
 func (mc MappedCluster) IsBad() bool {
 	return mc == 0xfffffff7
 }
 
+// IsLast indicates that no more clusters follow the cluster that led to this
+// entry.
 func (mc MappedCluster) IsLast() bool {
 	return mc == 0xffffffff
 }
 
+// Fat is the collection of all FAT entries.
 type Fat []MappedCluster
 
 func (er *ExfatReader) parseFat() (fat Fat, err error) {
@@ -827,13 +864,15 @@ func (er *ExfatReader) parseFats() (fats []Fat, err error) {
 	return fats, nil
 }
 
+// SectorSize is the sector-size from the active FAT.
 func (er *ExfatReader) SectorSize() uint32 {
 
 	// TODO(dustin): !! Add test.
 
-	return uint32(er.bootRegion.sectorSize)
+	return uint32(er.bootRegion.bsh.SectorSize())
 }
 
+// SectorsPerCluster is the sectors-per-cluster from the active FAT.
 func (er *ExfatReader) SectorsPerCluster() uint32 {
 
 	// TODO(dustin): !! Add test.
@@ -841,6 +880,8 @@ func (er *ExfatReader) SectorsPerCluster() uint32 {
 	return er.bootRegion.bsh.SectorsPerCluster()
 }
 
+// ActiveBootRegion returns the active boot-sector struct (whether main or
+// backup).
 func (er *ExfatReader) ActiveBootRegion() BootSectorHeader {
 
 	// TODO(dustin): !! Add test.
@@ -848,6 +889,7 @@ func (er *ExfatReader) ActiveBootRegion() BootSectorHeader {
 	return er.bootRegion.bsh
 }
 
+// FirstClusterOfRootDirectory is the first-cluster of the directory-entry data.
 func (er *ExfatReader) FirstClusterOfRootDirectory() uint32 {
 
 	// TODO(dustin): !! Add test.
@@ -855,6 +897,7 @@ func (er *ExfatReader) FirstClusterOfRootDirectory() uint32 {
 	return er.bootRegion.bsh.FirstClusterOfRootDirectory
 }
 
+// GetCluster gets a Cluster instance for the given cluster.
 func (er *ExfatReader) GetCluster(clusterNumber uint32) *ExfatCluster {
 	ec, err := newExfatCluster(er, clusterNumber)
 	log.PanicIf(err)
@@ -862,6 +905,8 @@ func (er *ExfatReader) GetCluster(clusterNumber uint32) *ExfatCluster {
 	return ec
 }
 
+// ClusterVisitorFunc is a visitor callback as all clusters in the chain are
+// visited.
 type ClusterVisitorFunc func(ec *ExfatCluster) (doContinue bool, err error)
 
 // EnumerateClusters calls the given callback for each cluster in the chain
@@ -972,6 +1017,8 @@ func (er *ExfatReader) checkClusterHeapOffset() (err error) {
 	return nil
 }
 
+// Parse loads all of the main filesystem structures. This is always a small
+// read (does not scale with size).
 func (er *ExfatReader) Parse() (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
@@ -1008,9 +1055,13 @@ func (er *ExfatReader) Parse() (err error) {
 	// that the main boot-sector is garbage, we want to be consistent with the
 	// boot-sector that we're supposed to be using.
 
-	if er.bootRegion.bsh.UseFirstFat() == true {
+	if er.bootRegion.bsh.VolumeFlags.UseFirstFat() == true {
 		er.activeFat = fats[0]
-	} else if er.bootRegion.bsh.UseSecondFat() == true {
+	} else if er.bootRegion.bsh.VolumeFlags.UseSecondFat() == true {
+		if len(fats) == 1 {
+			log.Panicf("boot-sector-header says to use the second FAT but only one FAT is available")
+		}
+
 		er.activeFat = fats[1]
 	} else {
 		log.Panicf("no fat selected")
@@ -1112,7 +1163,7 @@ func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize
 	return visitedClusters, visitedSectors, nil
 }
 
-// Cluster manages reads on the sectors in a cluster and checks that the
+// ExfatCluster manages reads on the sectors in a cluster and checks that the
 // requested sectors are within bounds.
 type ExfatCluster struct {
 	er *ExfatReader
@@ -1152,10 +1203,13 @@ func newExfatCluster(er *ExfatReader, clusterNumber uint32) (ec *ExfatCluster, e
 	return ec, nil
 }
 
+// ClusterNumber gets the number of the cluster that this instance represents.
 func (ec *ExfatCluster) ClusterNumber() uint32 {
 	return ec.clusterNumber
 }
 
+// GetSectorByIndex gets the data for the given sector within the cluster that
+// this instance represents.
 func (ec *ExfatCluster) GetSectorByIndex(sectorIndex uint32) (data []byte, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
@@ -1189,8 +1243,12 @@ func (ec *ExfatCluster) GetSectorByIndex(sectorIndex uint32) (data []byte, err e
 	return data, nil
 }
 
+// SectorVisitorFunc is a visitor callback that is called for each sector in a
+// cluster.
 type SectorVisitorFunc func(sectorNumber uint32, data []byte) (bool, error)
 
+// EnumerateSectors calls the given callback for each sector in the cluster that
+// this instance represents.
 func (ec *ExfatCluster) EnumerateSectors(cb SectorVisitorFunc) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {

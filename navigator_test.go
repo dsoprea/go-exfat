@@ -128,7 +128,7 @@ func TestExfatNavigator_IndexDirectoryEntries(t *testing.T) {
 
 	typeNames := make([]string, len(index))
 	i := 0
-	for typeName, _ := range index {
+	for typeName := range index {
 		typeNames[i] = typeName
 		i++
 	}

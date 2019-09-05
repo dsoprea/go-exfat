@@ -10,6 +10,7 @@ import (
 	"github.com/dsoprea/go-logging"
 )
 
+// TreeNode represents a single file or directory.
 type TreeNode struct {
 	name string
 
@@ -27,6 +28,7 @@ type TreeNode struct {
 	childrenMap map[string]*TreeNode
 }
 
+// NewTreeNode returns a new instance of TreeNode.
 func NewTreeNode(name string, isDirectory bool, ide IndexedDirectoryEntry, fde *ExfatFileDirectoryEntry, sede *ExfatStreamExtensionDirectoryEntry) (tn *TreeNode) {
 
 	// TODO(dustin): !! Add tests.
@@ -51,6 +53,8 @@ func NewTreeNode(name string, isDirectory bool, ide IndexedDirectoryEntry, fde *
 	return tn
 }
 
+// Name returns the name of the current file or directory (without any of its
+// parents' path information).
 func (tn *TreeNode) Name() string {
 
 	// TODO(dustin): !! Add tests.
@@ -58,6 +62,8 @@ func (tn *TreeNode) Name() string {
 	return tn.name
 }
 
+// IndexedDirectoryEntry returns the underlying, low-level directory-entry
+// information that were retrieved for this directory.
 func (tn *TreeNode) IndexedDirectoryEntry() IndexedDirectoryEntry {
 
 	// TODO(dustin): !! Add tests.
@@ -65,6 +71,9 @@ func (tn *TreeNode) IndexedDirectoryEntry() IndexedDirectoryEntry {
 	return tn.ide
 }
 
+// FileDirectoryEntry returns the FDE for the current directory (it's actually a
+// part of the IDE but this is important and is nicer to have directly
+// available).
 func (tn *TreeNode) FileDirectoryEntry() *ExfatFileDirectoryEntry {
 
 	// TODO(dustin): !! Add tests.
@@ -72,6 +81,9 @@ func (tn *TreeNode) FileDirectoryEntry() *ExfatFileDirectoryEntry {
 	return tn.fde
 }
 
+// StreamDirectoryEntry returns the SEDE for the current directory (it's
+// actually a part of the IDE but this is important and is nicer to have
+// directly available).
 func (tn *TreeNode) StreamDirectoryEntry() *ExfatStreamExtensionDirectoryEntry {
 
 	// TODO(dustin): !! Add tests.
@@ -79,6 +91,7 @@ func (tn *TreeNode) StreamDirectoryEntry() *ExfatStreamExtensionDirectoryEntry {
 	return tn.sede
 }
 
+// IsDirectory indicates whether the node is a directory or not.
 func (tn *TreeNode) IsDirectory() bool {
 
 	// TODO(dustin): !! Add tests.
@@ -86,6 +99,7 @@ func (tn *TreeNode) IsDirectory() bool {
 	return tn.isDirectory
 }
 
+// ChildFolders lists any child-folders. Only applies to directory nodes.
 func (tn *TreeNode) ChildFolders() []string {
 
 	// TODO(dustin): !! Add tests.
@@ -93,6 +107,7 @@ func (tn *TreeNode) ChildFolders() []string {
 	return tn.childrenFolders
 }
 
+// ChildFiles lists any child files. Only applies to directory nodes.
 func (tn *TreeNode) ChildFiles() []string {
 
 	// TODO(dustin): !! Add tests.
@@ -100,6 +115,7 @@ func (tn *TreeNode) ChildFiles() []string {
 	return tn.childrenFiles
 }
 
+// GetChild a particular child node.
 func (tn *TreeNode) GetChild(filename string) *TreeNode {
 
 	// TODO(dustin): !! Add tests.
@@ -107,6 +123,7 @@ func (tn *TreeNode) GetChild(filename string) *TreeNode {
 	return tn.childrenMap[filename]
 }
 
+// Lookup finds the given relative path within our children.
 func (tn *TreeNode) Lookup(pathParts []string) (lastPathParts []string, lastNode *TreeNode, found *TreeNode) {
 
 	// TODO(dustin): !! Add tests.
@@ -126,6 +143,7 @@ func (tn *TreeNode) Lookup(pathParts []string) (lastPathParts []string, lastNode
 	return lastPathParts, lastNode, found
 }
 
+// AddChild registers a new child to this node. It's stored in sorted order.
 func (tn *TreeNode) AddChild(name string, isDirectory bool, fde *ExfatFileDirectoryEntry, sede *ExfatStreamExtensionDirectoryEntry, ide IndexedDirectoryEntry) *TreeNode {
 
 	// TODO(dustin): !! Add tests.
@@ -164,11 +182,13 @@ func (tn *TreeNode) AddChild(name string, isDirectory bool, fde *ExfatFileDirect
 	return childNode
 }
 
+// Tree is a higher-level struct that wraps the root-node.
 type Tree struct {
 	er       *ExfatReader
 	rootNode *TreeNode
 }
 
+// NewTree returns a new Tree instance.
 func NewTree(er *ExfatReader) *Tree {
 	rootNode := NewTreeNode("", true, IndexedDirectoryEntry{}, nil, nil)
 
@@ -217,6 +237,7 @@ func (tree *Tree) loadDirectory(clusterNumber uint32, node *TreeNode) (err error
 	return nil
 }
 
+// Load loads the whole tree.
 func (tree *Tree) Load() (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
@@ -239,6 +260,7 @@ func (tree *Tree) Load() (err error) {
 	return nil
 }
 
+// Lookup finds the node for the given absolute path.
 func (tree *Tree) Lookup(pathParts []string) (node *TreeNode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
@@ -273,8 +295,11 @@ func (tree *Tree) Lookup(pathParts []string) (node *TreeNode, err error) {
 	}
 }
 
+// TreeVisitorFunc is a visitor function that receives a series of visited
+// nodes.
 type TreeVisitorFunc func(pathParts []string, node *TreeNode) (err error)
 
+// Visit will pass every node in the tree to the given callback.
 func (tree *Tree) Visit(cb TreeVisitorFunc) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
@@ -352,6 +377,8 @@ func (tree *Tree) visit(pathParts []string, node *TreeNode, cb TreeVisitorFunc) 
 	return nil
 }
 
+// List returns a complete list of all paths and a map of each of those paths to
+// their node instances.
 func (tree *Tree) List() (files []string, nodes map[string]*TreeNode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {

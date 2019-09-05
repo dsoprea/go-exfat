@@ -16,11 +16,14 @@ const (
 	directoryEntryBytesCount = 32
 )
 
+// ExfatNavigator knows how to get and manipulate the entries of a single
+// directory.
 type ExfatNavigator struct {
 	er                 *ExfatReader
 	firstClusterNumber uint32
 }
 
+// NewExfatNavigator returns a new ExfatNavigator instance.
 func NewExfatNavigator(er *ExfatReader, firstClusterNumber uint32) (en *ExfatNavigator) {
 	return &ExfatNavigator{
 		er:                 er,
@@ -28,8 +31,13 @@ func NewExfatNavigator(er *ExfatReader, firstClusterNumber uint32) (en *ExfatNav
 	}
 }
 
+// DirectoryEntryVisitorFunc is a function type used as a callback over each
+// file directory entry.
 type DirectoryEntryVisitorFunc func(primaryEntry DirectoryEntry, secondaryEntries []DirectoryEntry) (err error)
 
+// EnumerateDirectoryEntries will enumerate each primary directory entry
+// associated with the given file along with an secondary entries that they're
+// associated with.
 func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc) (visitedClusters, visitedSectors []uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
@@ -177,14 +185,19 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc
 	return visitedClusters, visitedSectors, nil
 }
 
+// IndexedDirectoryEntry is an organization type that the raw directory entries
+// associated with a primary directory entry are assigned into.
 type IndexedDirectoryEntry struct {
 	PrimaryEntry     DirectoryEntry
 	SecondaryEntries []DirectoryEntry
 	Extra            map[string]interface{}
 }
 
+// DirectoryEntryIndex is a collection of all indexed-directory-entries in a
+// specific directory. This is colloquially referred to simply as an "index".
 type DirectoryEntryIndex map[string][]IndexedDirectoryEntry
 
+// Dump prints a bunch of information about an index.
 func (dei DirectoryEntryIndex) Dump() {
 	fmt.Printf("Directory Entry Index\n")
 	fmt.Printf("=====================\n")
@@ -228,6 +241,8 @@ func (dei DirectoryEntryIndex) Dump() {
 	}
 }
 
+// Filenames returns a map of all filenames in the directory and whether they
+// are directories or just files.
 func (dei DirectoryEntryIndex) Filenames() (filenames map[string]bool) {
 	fileIdeList, found := dei["File"]
 	if found == true {
@@ -243,6 +258,7 @@ func (dei DirectoryEntryIndex) Filenames() (filenames map[string]bool) {
 	return filenames
 }
 
+// FileCount returns the number of files in the directory.
 func (dei DirectoryEntryIndex) FileCount() (count int) {
 	if fileIdeList, found := dei["File"]; found == true {
 		count = len(fileIdeList)
@@ -251,11 +267,13 @@ func (dei DirectoryEntryIndex) FileCount() (count int) {
 	return count
 }
 
+// GetFile returns the file directory-entry with index `i`.
 func (dei DirectoryEntryIndex) GetFile(i int) (filename string, fdf *ExfatFileDirectoryEntry) {
 	ide := dei["File"][i]
 	return ide.Extra["complete_filename"].(string), ide.PrimaryEntry.(*ExfatFileDirectoryEntry)
 }
 
+// FindIndexedFile returns an IDE for a given file.
 func (dei DirectoryEntryIndex) FindIndexedFile(filename string) (ide IndexedDirectoryEntry, found bool) {
 	for i := 0; i < dei.FileCount(); i++ {
 		ide := dei["File"][i]
@@ -267,6 +285,8 @@ func (dei DirectoryEntryIndex) FindIndexedFile(filename string) (ide IndexedDire
 	return ide, false
 }
 
+// FindIndexedFileDirectoryEntry returns the i'th occurrence of the given entry-
+// type under the given file.
 func (dei DirectoryEntryIndex) FindIndexedFileDirectoryEntry(filename, entryTypeName string, i int) (de DirectoryEntry) {
 	ide, found := dei.FindIndexedFile(filename)
 	if found == false {
@@ -298,6 +318,8 @@ func (dei DirectoryEntryIndex) FindIndexedFileDirectoryEntry(filename, entryType
 	return nil
 }
 
+// FindIndexedFileFileDirectoryEntry is a convenience function to get the FDE
+// for the given file.
 func (dei DirectoryEntryIndex) FindIndexedFileFileDirectoryEntry(filename string) (fdf *ExfatFileDirectoryEntry) {
 	de := dei.FindIndexedFileDirectoryEntry(filename, "File", 0)
 	if de == nil {
@@ -307,6 +329,8 @@ func (dei DirectoryEntryIndex) FindIndexedFileFileDirectoryEntry(filename string
 	return de.(*ExfatFileDirectoryEntry)
 }
 
+// FindIndexedFileStreamExtensionDirectoryEntry is a convenience function to get
+// the SEDE for the given file.
 func (dei DirectoryEntryIndex) FindIndexedFileStreamExtensionDirectoryEntry(filename string) (sede *ExfatStreamExtensionDirectoryEntry) {
 	de := dei.FindIndexedFileDirectoryEntry(filename, "StreamExtension", 0)
 	if de == nil {
@@ -316,6 +340,7 @@ func (dei DirectoryEntryIndex) FindIndexedFileStreamExtensionDirectoryEntry(file
 	return de.(*ExfatStreamExtensionDirectoryEntry)
 }
 
+// IndexDirectoryEntries builds an index for the current directory.
 func (en *ExfatNavigator) IndexDirectoryEntries() (index DirectoryEntryIndex, visitedClusters, visitedSectors []uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
@@ -341,14 +366,14 @@ func (en *ExfatNavigator) IndexDirectoryEntries() (index DirectoryEntryIndex, vi
 
 		if _, ok := primaryEntry.(*ExfatFileDirectoryEntry); ok == true {
 			mf := MultipartFilename(secondaryEntries)
-			complete_filename := mf.Filename()
+			completeFilename := mf.Filename()
 
-			extra["complete_filename"] = complete_filename
+			extra["complete_filename"] = completeFilename
 		}
 
 		typeName := primaryEntry.TypeName()
-		if list_, found := index[typeName]; found == true {
-			index[typeName] = append(list_, ide)
+		if ideList, found := index[typeName]; found == true {
+			index[typeName] = append(ideList, ide)
 		} else {
 			index[typeName] = []IndexedDirectoryEntry{ide}
 		}

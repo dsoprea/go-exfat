@@ -4,6 +4,7 @@ import (
 	"unicode/utf16"
 )
 
+// UnicodeFromAscii returns Unicode from raw utf16 data.
 func UnicodeFromAscii(raw []byte, unicodeCharCount int) string {
 	// `VolumeLabel` is a Unicode-encoded string and the character-count
 	// corresponds to the number of Unicode characters. The character-count may

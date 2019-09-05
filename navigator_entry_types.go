@@ -10,54 +10,70 @@ import (
 	"github.com/go-restruct/restruct"
 )
 
-// TODO(dustin): Implement the timestamp timezones.
-
+// EntryType allows us to decompose an EntryType value.
 type EntryType uint8
 
+// IsEndOfDirectory indicates that this is the last entry in the directory.
 func (et EntryType) IsEndOfDirectory() bool {
 	return et == 0
 }
 
+// IsUnusedEntryMarker indicates that the directory-entry is a placeholder.
 func (et EntryType) IsUnusedEntryMarker() bool {
 	return et >= 0x01 && et <= 0x7f
 }
 
+// IsRegular indicates that this entry is a normal directory entry and
+// unremarkable.
 func (et EntryType) IsRegular() bool {
 	return et >= 0x81 && et <= 0xff
 }
 
+// TypeCode indicates the general type of the entry. This is not unique unless
+// combined with the 'importance' flag and 'critical' flag.
 func (et EntryType) TypeCode() int {
 	return int(et & 31)
 }
 
+// TypeImportance indicates whether or not this is a mandatory or options entry-
+// type.
 func (et EntryType) TypeImportance() bool {
 	return et&32 > 0
 }
 
+// IsCritical indicates whether 'importance' is cleared (enabled).
 func (et EntryType) IsCritical() bool {
 	return et.TypeImportance() == false
 }
 
+// IsBenign indicates whether 'importance' is set (disabled).
 func (et EntryType) IsBenign() bool {
 	return et.TypeImportance() == true
 }
 
+// TypeCategory indicates whether this is a primary record or a secondary entry
+// (which will *accompany* a primary entry).
 func (et EntryType) TypeCategory() bool {
 	return et&64 > 0
 }
 
+// IsPrimary indicates whether 'category' is cleared (enabled).
 func (et EntryType) IsPrimary() bool {
 	return et.TypeCategory() == false
 }
 
+// IsSecondary indicates whether 'category' is set (disabled).
 func (et EntryType) IsSecondary() bool {
 	return et.TypeCategory() == true
 }
 
+// IsInUse indicates that the entry is not unused, i.e. a regular directory-
+// entry.
 func (et EntryType) IsInUse() bool {
 	return et&128 > 0
 }
 
+// Dump dumps all flags/states embedded in the entry-type value.
 func (et EntryType) Dump() {
 	fmt.Printf("Entry Type\n")
 	fmt.Printf("==========\n")
@@ -86,6 +102,7 @@ func (et EntryType) Dump() {
 	fmt.Printf("\n")
 }
 
+// String returns a descriptive string.
 func (et EntryType) String() string {
 	return fmt.Sprintf("EntryType<TYPE-CODE=(%d) IS-CRITICAL=[%v] IS-PRIMARY=[%v] IS-IN-USE=[%v] X-IS-REGULAR=[%v] X-IS-UNUSED=[%v] X-IS-END=[%v]>", et.TypeCode(), et.IsCritical(), et.IsPrimary(), et.IsInUse(), et.IsRegular(), et.IsUnusedEntryMarker(), et.IsEndOfDirectory())
 }
@@ -94,15 +111,16 @@ func (et EntryType) String() string {
 // identify an entry-type (`isCritical` corresponds directly to
 // `TypeImportance` and `isPrimary` corresponds directly to `TypeCategory`):
 //
-// 	6.2.1.1 TypeCode Field
+//  6.2.1.1 TypeCode Field
 //
-// 	The TypeCode field partially describes the specific type of the given directory entry. This field, plus the TypeImportance and TypeCategory fields (see Sections 6.2.1.2 and 6.2.1.3, respectively) uniquely identify the type of the given directory entry.
+//  The TypeCode field partially describes the specific type of the given directory entry. This field, plus the TypeImportance and TypeCategory fields (see Sections 6.2.1.2 and 6.2.1.3, respectively) uniquely identify the type of the given directory entry.
 type DirectoryEntryParserKey struct {
 	typeCode   int
 	isCritical bool
 	isPrimary  bool
 }
 
+// String returns a descriptive string.
 func (depk DirectoryEntryParserKey) String() string {
 	return fmt.Sprintf("DirectoryEntryParserKey<TYPE-CODE=(%d) IS-CRITICAL=[%v] IS-PRIMARY=[%v]>", depk.typeCode, depk.isCritical, depk.isPrimary)
 }
@@ -115,114 +133,140 @@ var (
 		//// Critical primary
 
 		// Allocation Bitmap (Section 7.1)
-		DirectoryEntryParserKey{typeCode: 1, isCritical: true, isPrimary: true}: reflect.TypeOf(ExfatAllocationBitmapDirectoryEntry{}),
+		{typeCode: 1, isCritical: true, isPrimary: true}: reflect.TypeOf(ExfatAllocationBitmapDirectoryEntry{}),
 
 		// Up-case Table (Section 7.2)
-		DirectoryEntryParserKey{typeCode: 2, isCritical: true, isPrimary: true}: reflect.TypeOf(ExfatUpcaseTableDirectoryEntry{}),
+		{typeCode: 2, isCritical: true, isPrimary: true}: reflect.TypeOf(ExfatUpcaseTableDirectoryEntry{}),
 
 		// Volume Label (Section 7.3)
-		DirectoryEntryParserKey{typeCode: 3, isCritical: true, isPrimary: true}: reflect.TypeOf(ExfatVolumeLabelDirectoryEntry{}),
+		{typeCode: 3, isCritical: true, isPrimary: true}: reflect.TypeOf(ExfatVolumeLabelDirectoryEntry{}),
 
 		// File (Section 7.4)
-		DirectoryEntryParserKey{typeCode: 5, isCritical: true, isPrimary: true}: reflect.TypeOf(ExfatFileDirectoryEntry{}),
+		{typeCode: 5, isCritical: true, isPrimary: true}: reflect.TypeOf(ExfatFileDirectoryEntry{}),
 
 		//// Benign primary
 
 		// Volume GUID (Section 7.5)
-		DirectoryEntryParserKey{typeCode: 0, isCritical: false, isPrimary: true}: reflect.TypeOf(ExfatVolumeGuidDirectoryEntry{}),
+		{typeCode: 0, isCritical: false, isPrimary: true}: reflect.TypeOf(ExfatVolumeGuidDirectoryEntry{}),
 
 		// TexFAT Padding (Section 7.10)
-		DirectoryEntryParserKey{typeCode: 1, isCritical: false, isPrimary: true}: reflect.TypeOf(ExfatTexFATDirectoryEntry{}),
+		{typeCode: 1, isCritical: false, isPrimary: true}: reflect.TypeOf(ExfatTexFATDirectoryEntry{}),
 
 		//// Critical secondary
 
 		// Stream Extension (Section 7.6)
-		DirectoryEntryParserKey{typeCode: 0, isCritical: true, isPrimary: false}: reflect.TypeOf(ExfatStreamExtensionDirectoryEntry{}),
+		{typeCode: 0, isCritical: true, isPrimary: false}: reflect.TypeOf(ExfatStreamExtensionDirectoryEntry{}),
 
 		// File Name (Section 7.7)
-		DirectoryEntryParserKey{typeCode: 1, isCritical: true, isPrimary: false}: reflect.TypeOf(ExfatFileNameDirectoryEntry{}),
+		{typeCode: 1, isCritical: true, isPrimary: false}: reflect.TypeOf(ExfatFileNameDirectoryEntry{}),
 
 		//// Benign secondary
 
 		// Vendor Extension (Section 7.8)
-		DirectoryEntryParserKey{typeCode: 0, isCritical: false, isPrimary: false}: reflect.TypeOf(ExfatVendorExtensionDirectoryEntry{}),
+		{typeCode: 0, isCritical: false, isPrimary: false}: reflect.TypeOf(ExfatVendorExtensionDirectoryEntry{}),
 
 		// Vendor Allocation (Section 7.9)
-		DirectoryEntryParserKey{typeCode: 1, isCritical: false, isPrimary: false}: reflect.TypeOf(ExfatVendorAllocationDirectoryEntry{}),
+		{typeCode: 1, isCritical: false, isPrimary: false}: reflect.TypeOf(ExfatVendorAllocationDirectoryEntry{}),
 	}
 )
 
+// DirectoryEntry represents any of the directory-entry structs defined here.
 type DirectoryEntry interface {
 	TypeName() string
 }
 
+// PrimaryDirectoryEntry represents the common methods found on any primary-
+// type DE, which is really just SecondaryCount().
 type PrimaryDirectoryEntry interface {
 	SecondaryCount() uint8
 }
 
+// DumpableDirectoryEntry represents any directory-entry that can dump its
+// information to the screen. This is really just DEs that we've taken the time
+// to do this for that also contain a wealth of information.
 type DumpableDirectoryEntry interface {
 	Dump()
 }
 
+// ExfatTimestamp is the raw packaged integer with timestamp information. It
+// embeds its parsing semantics.
 type ExfatTimestamp uint32
 
+// Second returns the second component.
 func (et ExfatTimestamp) Second() int {
 	return int(et & 31)
 }
 
+// Minute returns the minute component.
 func (et ExfatTimestamp) Minute() int {
 	return int(et&2016) >> 5
 }
 
+// Hour returns the hour component.
 func (et ExfatTimestamp) Hour() int {
 	return int(et&63488) >> 11
 }
 
+// Day returns the day component.
 func (et ExfatTimestamp) Day() int {
 	return int(et&2031616) >> 16
 }
 
+// Month returns the minute component.
 func (et ExfatTimestamp) Month() int {
 	return int(et&31457280) >> 21
 }
 
+// Year returns the year component.
 func (et ExfatTimestamp) Year() int {
 	return 1980 + int(et&4261412864)>>25
 }
 
+// TimestampWithOffset returns a location-corrected timestamp.
 func (et ExfatTimestamp) TimestampWithOffset(offset int) time.Time {
 	location := time.FixedZone(fmt.Sprintf("(off=%d)", offset), offset)
 
 	return time.Date(et.Year(), time.Month(et.Month()), et.Day(), et.Hour(), et.Minute(), et.Second(), 0, location)
 }
 
+// FileAttributes allows us to decompose the attributes integer into the various
+// attributes that a file/directory can have.
 type FileAttributes uint16
 
+// IsReadOnly returns whether the file should be read-only.
 func (fa FileAttributes) IsReadOnly() bool {
 	return fa&1 > 0
 }
 
+// IsHidden returns whether the file should not be present in standard file
+// listings by default.
 func (fa FileAttributes) IsHidden() bool {
 	return fa&2 > 0
 }
 
+// IsSystem returns the system flag.
 func (fa FileAttributes) IsSystem() bool {
 	return fa&4 > 0
 }
 
+// IsDirectory returns whether this entry is a directory.
 func (fa FileAttributes) IsDirectory() bool {
 	return fa&16 > 0
 }
 
+// IsArchive returns whether the archive flag has been set on the current file.
 func (fa FileAttributes) IsArchive() bool {
 	return fa&32 > 0
 }
 
+// String returns a descriptive string.
 func (fa FileAttributes) String() string {
 	return fmt.Sprintf("FileAttributes<IS-READONLY=[%v] IS-HIDDEN=[%v] IS-SYSTEM=[%v] IS-DIRECTORY=[%v] IS-ARCHIVE=[%v]>",
 		fa.IsReadOnly(), fa.IsHidden(), fa.IsSystem(), fa.IsDirectory(), fa.IsArchive())
 }
 
+// DumpBareIndented prints the various attribute states preceding by arbitrary
+// indentation.
 func (fa FileAttributes) DumpBareIndented(indent string) {
 	fmt.Printf("%sRead Only? [%v]\n", indent, fa.IsReadOnly())
 	fmt.Printf("%sHidden? [%v]\n", indent, fa.IsHidden())
@@ -231,12 +275,13 @@ func (fa FileAttributes) DumpBareIndented(indent string) {
 	fmt.Printf("%sArchive? [%v]\n", indent, fa.IsArchive())
 }
 
+// ExfatFileDirectoryEntry describes file entries.
 type ExfatFileDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.4.1 defines its contents.
 	EntryType EntryType
 
 	// SecondaryCount: This field is mandatory and Section 7.4.2 defines its contents.
-	SecondaryCount_ uint8
+	SecondaryCountRaw uint8
 
 	// SetChecksum: This field is mandatory and Section 7.4.3 defines its contents.
 	SetChecksum uint16
@@ -247,14 +292,14 @@ type ExfatFileDirectoryEntry struct {
 	// Reserved1: This field is mandatory and its contents are reserved.
 	Reserved1 uint16
 
-	// CreateTimestamp: This field is mandatory and Section 7.4.5 defines its contents.
-	CreateTimestamp_ ExfatTimestamp
+	// CreateTimestampRaw: This field is mandatory and Section 7.4.5 defines its contents.
+	CreateTimestampRaw ExfatTimestamp
 
-	// LastModifiedTimestamp: This field is mandatory and Section 7.4.6 defines its contents.
-	LastModifiedTimestamp_ ExfatTimestamp
+	// LastModifiedTimestampRaw: This field is mandatory and Section 7.4.6 defines its contents.
+	LastModifiedTimestampRaw ExfatTimestamp
 
-	// LastAccessedTimestamp: This field is mandatory and Section 7.4.7 defines its contents.
-	LastAccessedTimestamp_ ExfatTimestamp
+	// LastAccessedTimestampRaw: This field is mandatory and Section 7.4.7 defines its contents.
+	LastAccessedTimestampRaw ExfatTimestamp
 
 	// Create10msIncrement: This field is mandatory and Section 7.4.5 defines its contents.
 	Create10msIncrement uint8
@@ -275,32 +320,40 @@ type ExfatFileDirectoryEntry struct {
 	Reserved2 [7]byte
 }
 
+// String returns a descriptive string.
 func (fdf ExfatFileDirectoryEntry) String() string {
 	return fmt.Sprintf("FileDirectoryEntry<SECONDARY-COUNT=(%d) CTIME=[%s] MTIME=[%s] ATIME=[%s]>",
-		fdf.SecondaryCount_,
+		fdf.SecondaryCountRaw,
 		fdf.CreateTimestamp(), fdf.LastModifiedTimestamp(), fdf.LastAccessedTimestamp())
 }
 
+// SecondaryCount indicates how many of the subsequent secondary entries should
+// be collected to support this entry.
 func (fdf ExfatFileDirectoryEntry) SecondaryCount() uint8 {
-	return fdf.SecondaryCount_
+	return fdf.SecondaryCountRaw
 }
 
+// TypeName returns a unique name for this entry-type.
 func (fdf ExfatFileDirectoryEntry) TypeName() string {
 	return "File"
 }
 
+// CreateTimestamp returns the offset-corrected ctime.
 func (fdf ExfatFileDirectoryEntry) CreateTimestamp() time.Time {
-	return fdf.CreateTimestamp_.TimestampWithOffset(int(fdf.CreateUtcOffset))
+	return fdf.CreateTimestampRaw.TimestampWithOffset(int(fdf.CreateUtcOffset))
 }
 
+// LastModifiedTimestamp returns the offset-corrected mtime.
 func (fdf ExfatFileDirectoryEntry) LastModifiedTimestamp() time.Time {
-	return fdf.LastModifiedTimestamp_.TimestampWithOffset(int(fdf.LastModifiedUtcOffset))
+	return fdf.LastModifiedTimestampRaw.TimestampWithOffset(int(fdf.LastModifiedUtcOffset))
 }
 
+// LastAccessedTimestamp returns the offset-corrected atime.
 func (fdf ExfatFileDirectoryEntry) LastAccessedTimestamp() time.Time {
-	return fdf.LastAccessedTimestamp_.TimestampWithOffset(int(fdf.LastAccessedUtcOffset))
+	return fdf.LastAccessedTimestampRaw.TimestampWithOffset(int(fdf.LastAccessedUtcOffset))
 }
 
+// Dump prints the file entry's info to STDOUT.
 func (fdf ExfatFileDirectoryEntry) Dump() {
 	fmt.Printf("File Directory Entry\n")
 	fmt.Printf("====================\n")
@@ -320,6 +373,8 @@ func (fdf ExfatFileDirectoryEntry) Dump() {
 	fmt.Printf("\n")
 }
 
+// ExfatAllocationBitmapDirectoryEntry points to the cluster that has the
+// allocation bitmap.
 type ExfatAllocationBitmapDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.1.1 defines its contents.
 	EntryType EntryType
@@ -337,14 +392,19 @@ type ExfatAllocationBitmapDirectoryEntry struct {
 	DataLength uint64
 }
 
+// String returns a string description.
 func (abde ExfatAllocationBitmapDirectoryEntry) String() string {
 	return fmt.Sprintf("AllocationBitmapDirectoryEntry<BITMAP-FLAGS=[%08b] FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", abde.BitmapFlags, abde.FirstCluster, abde.DataLength)
 }
 
+// TypeName returns a unique name for this entry-type.
 func (ExfatAllocationBitmapDirectoryEntry) TypeName() string {
 	return "AllocationBitmap"
 }
 
+// ExfatUpcaseTableDirectoryEntry points to the cluster that provides the
+// mapping for various characters back to the original characters in order
+// to support case-insensitivity.
 type ExfatUpcaseTableDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.2.1 defines its contents.
 	EntryType EntryType
@@ -365,14 +425,17 @@ type ExfatUpcaseTableDirectoryEntry struct {
 	DataLength uint64
 }
 
+// String returns a string description.
 func (utde ExfatUpcaseTableDirectoryEntry) String() string {
 	return fmt.Sprintf("UpcaseTableDirectoryEntry<TABLE-CHECKSUM=[0x%08x] FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", utde.TableChecksum, utde.FirstCluster, utde.DataLength)
 }
 
+// TypeName returns a unique name for this entry-type.
 func (ExfatUpcaseTableDirectoryEntry) TypeName() string {
 	return "UpcaseTable"
 }
 
+// ExfatVolumeLabelDirectoryEntry embeds the volume label.
 type ExfatVolumeLabelDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.3.1 defines its contents.
 	EntryType EntryType
@@ -386,10 +449,10 @@ type ExfatVolumeLabelDirectoryEntry struct {
 	//
 	// - The specification states that this is Unicode (naturally):
 	//
-	// 		The VolumeLabel field shall contain a Unicode string, which is the
-	// 		user-friendly name of the volume. The VolumeLabel field has the same
-	// 		set of invalid characters as the FileName field of the File Name
-	// 		directory entry (see Section 7.7.3).
+	//      The VolumeLabel field shall contain a Unicode string, which is the
+	//      user-friendly name of the volume. The VolumeLabel field has the same
+	//      set of invalid characters as the FileName field of the File Name
+	//      directory entry (see Section 7.7.3).
 	//
 	// - In practice, tools will combine both the `VolumeLabel` and `Reserved`
 	//   fields. So, we combine them here.
@@ -402,6 +465,7 @@ type ExfatVolumeLabelDirectoryEntry struct {
 	// Reserved [8]byte
 }
 
+// Label constructs and returns the final Unicode string.
 func (vlde ExfatVolumeLabelDirectoryEntry) Label() string {
 	// `VolumeLabel` is a Unicode-encoded string and the character-count
 	// corresponds to the number of Unicode characters.
@@ -410,20 +474,23 @@ func (vlde ExfatVolumeLabelDirectoryEntry) Label() string {
 	return decodedString
 }
 
+// String returns a string description.
 func (vlde ExfatVolumeLabelDirectoryEntry) String() string {
 	return fmt.Sprintf("VolumeLabelDirectoryEntry<CHARACTER-COUNT=(%d) LABEL=[%s]>", vlde.CharacterCount, vlde.Label())
 }
 
+// TypeName returns a unique name for this entry-type.
 func (ExfatVolumeLabelDirectoryEntry) TypeName() string {
 	return "VolumeLabel"
 }
 
+// ExfatVolumeGuidDirectoryEntry embeds the volume GUID.
 type ExfatVolumeGuidDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.5.1 defines its contents.
 	EntryType EntryType
 
 	// SecondaryCount: This field is mandatory and Section 7.5.2 defines its contents.
-	SecondaryCount_ uint8
+	SecondaryCountRaw uint8
 
 	// SetChecksum: This field is mandatory and Section 7.5.3 defines its contents.
 	SetChecksum uint16
@@ -438,52 +505,67 @@ type ExfatVolumeGuidDirectoryEntry struct {
 	Reserved [10]byte
 }
 
+// String returns a descriptive string.
 func (vgde ExfatVolumeGuidDirectoryEntry) String() string {
-	return fmt.Sprintf("VolumeGuidDirectoryEntry<SECONDARY-COUNT=(%d) SET-CHECKSUM=(0x%04x) GENERAL-PRIMARY-FLAGS=(%016b) GUID=[0x%064x]>", vgde.SecondaryCount_, vgde.SetChecksum, vgde.GeneralPrimaryFlags, vgde.VolumeGuid)
+	return fmt.Sprintf("VolumeGuidDirectoryEntry<SECONDARY-COUNT=(%d) SET-CHECKSUM=(0x%04x) GENERAL-PRIMARY-FLAGS=(%016b) GUID=[0x%064x]>", vgde.SecondaryCountRaw, vgde.SetChecksum, vgde.GeneralPrimaryFlags, vgde.VolumeGuid)
 }
 
+// SecondaryCount returns the count of associated secondary-records.
 func (vgde ExfatVolumeGuidDirectoryEntry) SecondaryCount() uint8 {
-	return vgde.SecondaryCount_
+	return vgde.SecondaryCountRaw
 }
 
+// TypeName returns a unique name for this entry-type.
 func (ExfatVolumeGuidDirectoryEntry) TypeName() string {
 	return "VolumeGuid"
 }
 
+// ExfatTexFATDirectoryEntry is a mobile-device entry-type that is not defined
+// by exFAT.
 type ExfatTexFATDirectoryEntry struct {
 	// Reserved: Not covered by the exFAT specification. Just mask the whole thing as reserved.
 	Reserved [32]byte
 }
 
+// String returns a descriptive string.
 func (ExfatTexFATDirectoryEntry) String() string {
 	return "TexFATDirectoryEntry<>"
 }
 
+// TypeName returns a unique name for this entry-type.
 func (ExfatTexFATDirectoryEntry) TypeName() string {
 	return "TexFAT"
 }
 
+// GeneralSecondaryFlags allows us to decompose the flags frequently embedded in
+// secondary directory entries.
 type GeneralSecondaryFlags uint8
 
+// IsAllocationPossible indicates that writes are supported for this entry-type.
 func (gsf GeneralSecondaryFlags) IsAllocationPossible() bool {
 	return gsf&1 > 0
 }
 
+// NoFatChain whether the data is stored sequentially on disk or the FAT is
+// required to find the subsequent ones.
 func (gsf GeneralSecondaryFlags) NoFatChain() bool {
 	return gsf&2 > 0
 }
 
+// String returns a descriptive string.
 func (gsf GeneralSecondaryFlags) String() string {
 	return fmt.Sprintf("GeneralSecondaryFlags<IsAllocationPossible=[%v] NoFatChain=[%v]>",
 		gsf.IsAllocationPossible(), gsf.NoFatChain())
 }
 
+// DumpBareIndented prints the secondary-flags with arbitrary indentation.
 func (gsf GeneralSecondaryFlags) DumpBareIndented(indent string) {
 	fmt.Printf("%sRaw Value: (%08b)\n", indent, gsf)
 	fmt.Printf("%sIsAllocationPossible: [%v]\n", indent, gsf.IsAllocationPossible())
 	fmt.Printf("%sNoFatChain: [%v]\n", indent, gsf.NoFatChain())
 }
 
+// ExfatStreamExtensionDirectoryEntry describes the actual contents of a file.
 type ExfatStreamExtensionDirectoryEntry struct {
 
 	// TODO(dustin): It's unclear where the names for the one or more streams under each file are stored.
@@ -517,16 +599,16 @@ type ExfatStreamExtensionDirectoryEntry struct {
 	//
 	//   From the spec (7.6.5 ValidDataLength Field):
 	//
-	//   	The ValidDataLength field shall describe how far into the data
-	//   	stream user data has been written. Implementations shall update this
-	//   	field as they write data further out into the data stream. On the
-	//   	storage media, the data between the valid data length and the data
-	//   	length of the data stream is undefined. Implementations shall return
-	//   	zeroes for read operations beyond the valid data length.
+	//      The ValidDataLength field shall describe how far into the data
+	//      stream user data has been written. Implementations shall update this
+	//      field as they write data further out into the data stream. On the
+	//      storage media, the data between the valid data length and the data
+	//      length of the data stream is undefined. Implementations shall return
+	//      zeroes for read operations beyond the valid data length.
 	//
-	//   	If the corresponding File directory entry describes a directory,
-	//   	then the only valid value for this field is equal to the value of
-	//   	the DataLength field.
+	//      If the corresponding File directory entry describes a directory,
+	//      then the only valid value for this field is equal to the value of
+	//      the DataLength field.
 	//
 	ValidDataLength uint64
 
@@ -547,11 +629,13 @@ type ExfatStreamExtensionDirectoryEntry struct {
 	DataLength uint64
 }
 
+// String returns a descriptive string.
 func (sede ExfatStreamExtensionDirectoryEntry) String() string {
 	return fmt.Sprintf("StreamExtensionDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) NAME-LENGTH=(%d) NAME-HASH=(0x%04x) VALID-DATA-LENGTH=(%d) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>",
 		sede.GeneralSecondaryFlags, sede.NameLength, sede.NameHash, sede.ValidDataLength, sede.FirstCluster, sede.DataLength)
 }
 
+// Dump prints the stream entry's info to STDOUT.
 func (sede ExfatStreamExtensionDirectoryEntry) Dump() {
 	fmt.Printf("Stream Extension Directory Entry\n")
 	fmt.Printf("================================\n")
@@ -570,10 +654,13 @@ func (sede ExfatStreamExtensionDirectoryEntry) Dump() {
 	fmt.Printf("\n")
 }
 
+// TypeName returns a unique name for this entry-type.
 func (ExfatStreamExtensionDirectoryEntry) TypeName() string {
 	return "StreamExtension"
 }
 
+// ExfatFileNameDirectoryEntry describes one part of the file's complete
+// filename.
 type ExfatFileNameDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.7.1 defines its contents.
 	EntryType EntryType
@@ -585,16 +672,21 @@ type ExfatFileNameDirectoryEntry struct {
 	FileName [30]byte
 }
 
+// String returns a descriptive string.
 func (fnde ExfatFileNameDirectoryEntry) String() string {
 	return fmt.Sprintf("FileNameDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) FILENAME=%v>", fnde.GeneralSecondaryFlags, fnde.FileName[:])
 }
 
+// TypeName returns a unique name for this entry-type.
 func (ExfatFileNameDirectoryEntry) TypeName() string {
 	return "FileName"
 }
 
+// MultipartFilename describes a set of filename components that need to be
+// combined in order to reconstitute the original
 type MultipartFilename []DirectoryEntry
 
+// Filename returns the reconstituted filename.
 func (mf MultipartFilename) Filename() string {
 
 	// NOTE(dustin): The total filename length is specified in the "Stream
@@ -616,6 +708,7 @@ func (mf MultipartFilename) Filename() string {
 	return filename
 }
 
+// ExfatVendorExtensionDirectoryEntry describes arbitrary vendor information.
 type ExfatVendorExtensionDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.8.1 defines its contents.
 	EntryType EntryType
@@ -630,14 +723,18 @@ type ExfatVendorExtensionDirectoryEntry struct {
 	VendorDefined [14]byte
 }
 
+// String returns a descriptive string.
 func (vede ExfatVendorExtensionDirectoryEntry) String() string {
 	return fmt.Sprintf("VendorExtensionDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) GUID=(0x%032x)>", vede.GeneralSecondaryFlags, vede.VendorGuid)
 }
 
+// TypeName returns a unique name for this entry-type.
 func (ExfatVendorExtensionDirectoryEntry) TypeName() string {
 	return "VendorExtension"
 }
 
+// ExfatVendorAllocationDirectoryEntry points to a cluster with arbitrary vendor
+// information.
 type ExfatVendorAllocationDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.9.1 defines its contents.
 	EntryType EntryType
@@ -658,10 +755,12 @@ type ExfatVendorAllocationDirectoryEntry struct {
 	DataLength uint64
 }
 
+// String returns a descriptive string.
 func (vade ExfatVendorAllocationDirectoryEntry) String() string {
 	return fmt.Sprintf("VendorAllocationDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) GUID=(0x%032x) VENDOR-DEFINED=(0x%08x) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", vade.GeneralSecondaryFlags, vade.VendorGuid, vade.VendorDefined, vade.FirstCluster, vade.DataLength)
 }
 
+// TypeName returns a unique name for this entry-type.
 func (ExfatVendorAllocationDirectoryEntry) TypeName() string {
 	return "VendorAllocation"
 }

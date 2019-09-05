@@ -6,11 +6,11 @@ import (
 )
 
 var (
-	AssetPath = ""
+	assetPath = ""
 )
 
 func init() {
 	goPath := os.Getenv("GOPATH")
 	projectPath := path.Join(goPath, "src", "github.com", "dsoprea", "go-exfat")
-	AssetPath = path.Join(projectPath, "test", "assets")
+	assetPath = path.Join(projectPath, "test", "assets")
 }

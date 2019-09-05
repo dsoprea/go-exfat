@@ -11,7 +11,7 @@ import (
 )
 
 func getTestFileAndParser() (f *os.File, er *ExfatReader) {
-	filepath := path.Join(AssetPath, "test.exfat")
+	filepath := path.Join(assetPath, "test.exfat")
 
 	f, err := os.Open(filepath)
 	log.PanicIf(err)
@@ -138,8 +138,8 @@ func TestExfatReader_parseBootRegion(t *testing.T) {
 	br, err := er.parseBootRegion()
 	log.PanicIf(err)
 
-	if br.sectorSize != 512 {
-		t.Fatalf("Sector-size not correct: (%d)", br.sectorSize)
+	if br.bsh.SectorSize() != 512 {
+		t.Fatalf("Sector-size not correct: (%d)", br.bsh.SectorSize())
 	}
 
 	description := br.bsh.String()
@@ -161,10 +161,10 @@ func TestExfatReader_parseFats(t *testing.T) {
 
 	er.bootRegion = bootRegionMain
 
-	fats, err := er.parseFats()
+	_, err = er.parseFats()
 	log.PanicIf(err)
 
-	fats = fats
+	// TODO(dustin): Add additional validation on FAT structures.
 }
 
 func TestExfatReader_Parse(t *testing.T) {
