@@ -143,7 +143,7 @@ func TestExfatReader_parseBootRegion(t *testing.T) {
 	}
 
 	description := br.bsh.String()
-	if description != "BootSector<SN=(3d51a058) REVISION=(00)-(01)>" {
+	if description != "BootSector<SN=(0x3d51a058) REVISION=(0x00)-(0x01)>" {
 		t.Fatalf("Boot-sector description not correct: %s", description)
 	}
 }

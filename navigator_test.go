@@ -73,6 +73,9 @@ func TestExfatNavigator__GetFileData(t *testing.T) {
 	// Get data.
 
 	sede := index.FindIndexedFileStreamExtensionDirectoryEntry("2-delahaye-type-165-cabriolet-dsc_8025.jpg")
+	if sede == nil {
+		t.Fatalf("File not found.")
+	}
 
 	h := sha1.New()
 
