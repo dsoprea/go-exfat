@@ -18,10 +18,15 @@ Complete.
 
 # Notes
 
-- Up-case tables, which support case insensitivity, are not read and therefore
-  not applied. As a result, all file-operations are case-sensitive (and the
-  villagers rejoiced).
+- All entry-types are parsed as per the requirements of the specification.
+  However:
 
-- Allocation bitmaps are not read, so it's not possible to know which clusters
-  are or are not used. This is not requird for browsing the filesystem or
-  reading files.
+  - Up-case tables, which support case insensitivity, are not read and therefore
+    not applied. As a result, all file-operations are case-sensitive (and the
+    villagers rejoiced).
+
+  - Allocation bitmaps are not read, so it's not possible to know which clusters
+    are or are not used. This is not requird for browsing the filesystem or
+    reading files.
+
+- Timestamps are accurate to one second.

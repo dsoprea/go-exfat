@@ -160,6 +160,10 @@ type PrimaryDirectoryEntry interface {
 	SecondaryCount() uint8
 }
 
+type DumpableDirectoryEntry interface {
+	Dump()
+}
+
 // type ExfatPrimaryDirectoryEntry struct {
 // 	// EntryType: This field is mandatory and Section 6.3.1 defines its contents.
 // 	//
@@ -226,8 +230,8 @@ type PrimaryDirectoryEntry interface {
 //
 // 	fmt.Printf("EntryType: (%d) [%08b]\n", sde.EntryType, sde.EntryType)
 // 	fmt.Printf("SecondaryCount: (%d)\n", sde.SecondaryCount_)
-// 	fmt.Printf("SetChecksum: (%04x)\n", sde.SetChecksum)
-// 	fmt.Printf("GeneralPrimaryFlags: (%04x)\n", sde.GeneralPrimaryFlags)
+// 	fmt.Printf("SetChecksum: (0x%04x)\n", sde.SetChecksum)
+// 	fmt.Printf("GeneralPrimaryFlags: (0x%04x)\n", sde.GeneralPrimaryFlags)
 // 	fmt.Printf("FirstCluster: (%d)\n", sde.FirstCluster)
 // 	fmt.Printf("DataLength: (%d)\n", sde.DataLength)
 //
@@ -306,7 +310,7 @@ func (et ExfatTimestamp) Year() int {
 }
 
 func (et ExfatTimestamp) TimestampWithOffset(offset int) time.Time {
-	location := time.FixedZone("(from exFAT)", offset)
+	location := time.FixedZone(fmt.Sprintf("(off=%d)", offset), offset)
 
 	return time.Date(et.Year(), time.Month(et.Month()), et.Day(), et.Hour(), et.Minute(), et.Second(), 0, location)
 }
@@ -336,6 +340,14 @@ func (fa FileAttributes) IsArchive() bool {
 func (fa FileAttributes) String() string {
 	return fmt.Sprintf("FileAttributes<IS-READONLY=[%v] IS-HIDDEN=[%v] IS-SYSTEM=[%v] IS-DIRECTORY=[%v] IS-ARCHIVE=[%v]>",
 		fa.IsReadOnly(), fa.IsHidden(), fa.IsSystem(), fa.IsDirectory(), fa.IsArchive())
+}
+
+func (fa FileAttributes) DumpBareIndented(indent string) {
+	fmt.Printf("%sRead Only? [%v]\n", indent, fa.IsReadOnly())
+	fmt.Printf("%sHidden? [%v]\n", indent, fa.IsHidden())
+	fmt.Printf("%sSystem? [%v]\n", indent, fa.IsSystem())
+	fmt.Printf("%sDirectory? [%v]\n", indent, fa.IsDirectory())
+	fmt.Printf("%sArchive? [%v]\n", indent, fa.IsArchive())
 }
 
 type ExfatFileDirectoryEntry struct {
@@ -408,6 +420,25 @@ func (fdf ExfatFileDirectoryEntry) LastAccessedTimestamp() time.Time {
 	return fdf.LastAccessedTimestamp_.TimestampWithOffset(int(fdf.LastAccessedUtcOffset))
 }
 
+func (fdf ExfatFileDirectoryEntry) Dump() {
+	fmt.Printf("File Directory Entry\n")
+	fmt.Printf("====================\n")
+	fmt.Printf("\n")
+
+	fmt.Printf("SecondaryCount: (%d)\n", fdf.SecondaryCount())
+	fmt.Printf("SetChecksum: (0x%04x)\n", fdf.SetChecksum)
+	fmt.Printf("CreateTimestamp: [%s]\n", fdf.CreateTimestamp())
+	fmt.Printf("LastModifiedTimestamp: [%s]\n", fdf.LastModifiedTimestamp())
+	fmt.Printf("LastAccessedTimestamp: [%s]\n", fdf.LastAccessedTimestamp())
+	fmt.Printf("\n")
+
+	fmt.Printf("Attributes:\n")
+
+	fdf.FileAttributes.DumpBareIndented("  ")
+
+	fmt.Printf("\n")
+}
+
 type ExfatAllocationBitmapDirectoryEntry struct {
 	// EntryType: This field is mandatory and Section 7.1.1 defines its contents.
 	EntryType EntryType
@@ -454,7 +485,7 @@ type ExfatUpcaseTableDirectoryEntry struct {
 }
 
 func (utde ExfatUpcaseTableDirectoryEntry) String() string {
-	return fmt.Sprintf("UpcaseTableDirectoryEntry<TABLE-CHECKSUM=[%08x] FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", utde.TableChecksum, utde.FirstCluster, utde.DataLength)
+	return fmt.Sprintf("UpcaseTableDirectoryEntry<TABLE-CHECKSUM=[0x%08x] FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", utde.TableChecksum, utde.FirstCluster, utde.DataLength)
 }
 
 func (ExfatUpcaseTableDirectoryEntry) TypeName() string {
@@ -527,7 +558,7 @@ type ExfatVolumeGuidDirectoryEntry struct {
 }
 
 func (vgde ExfatVolumeGuidDirectoryEntry) String() string {
-	return fmt.Sprintf("VolumeGuidDirectoryEntry<SECONDARY-COUNT=(%d) SET-CHECKSUM=(%04x) GENERAL-PRIMARY-FLAGS=(%016b) GUID=[%064x]>", vgde.SecondaryCount_, vgde.SetChecksum, vgde.GeneralPrimaryFlags, vgde.VolumeGuid)
+	return fmt.Sprintf("VolumeGuidDirectoryEntry<SECONDARY-COUNT=(%d) SET-CHECKSUM=(0x%04x) GENERAL-PRIMARY-FLAGS=(%016b) GUID=[0x%064x]>", vgde.SecondaryCount_, vgde.SetChecksum, vgde.GeneralPrimaryFlags, vgde.VolumeGuid)
 }
 
 func (vgde ExfatVolumeGuidDirectoryEntry) SecondaryCount() uint8 {
@@ -566,6 +597,12 @@ func (gsf GeneralSecondaryFlags) String() string {
 		gsf.IsAllocationPossible(), gsf.NoFatChain())
 }
 
+func (gsf GeneralSecondaryFlags) DumpBareIndented(indent string) {
+	fmt.Printf("%sRaw Value: (%08b)\n", indent, gsf)
+	fmt.Printf("%sIsAllocationPossible: [%v]\n", indent, gsf.IsAllocationPossible())
+	fmt.Printf("%sNoFatChain: [%v]\n", indent, gsf.NoFatChain())
+}
+
 type ExfatStreamExtensionDirectoryEntry struct {
 
 	// TODO(dustin): It's unclear where the names for the one or more streams under each file are stored.
@@ -589,6 +626,27 @@ type ExfatStreamExtensionDirectoryEntry struct {
 	Reserved2 [2]byte
 
 	// ValidDataLength: This field is mandatory and Section 7.6.5 defines its contents.
+	//
+	// NOTES
+	//
+	// - For files, `ValidDataLength` is the real amount of data. Ostensibly,
+	//   subsequent updates to a file don't necessarily have to occupy as much
+	//   space as is already allocated and this describes the actual data size.
+	//   For directories, only `DataLength` should be considered.
+	//
+	//   From the spec (7.6.5 ValidDataLength Field):
+	//
+	//   	The ValidDataLength field shall describe how far into the data
+	//   	stream user data has been written. Implementations shall update this
+	//   	field as they write data further out into the data stream. On the
+	//   	storage media, the data between the valid data length and the data
+	//   	length of the data stream is undefined. Implementations shall return
+	//   	zeroes for read operations beyond the valid data length.
+	//
+	//   	If the corresponding File directory entry describes a directory,
+	//   	then the only valid value for this field is equal to the value of
+	//   	the DataLength field.
+	//
 	ValidDataLength uint64
 
 	// Reserved3: This field is mandatory and its contents are reserved.
@@ -609,8 +667,26 @@ type ExfatStreamExtensionDirectoryEntry struct {
 }
 
 func (sede ExfatStreamExtensionDirectoryEntry) String() string {
-	return fmt.Sprintf("StreamExtensionDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) NAME-LENGTH=(%d) NAME-HASH=(%04x) VALID-DATA-LENGTH=(%d) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>",
+	return fmt.Sprintf("StreamExtensionDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) NAME-LENGTH=(%d) NAME-HASH=(0x%04x) VALID-DATA-LENGTH=(%d) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>",
 		sede.GeneralSecondaryFlags, sede.NameLength, sede.NameHash, sede.ValidDataLength, sede.FirstCluster, sede.DataLength)
+}
+
+func (sede ExfatStreamExtensionDirectoryEntry) Dump() {
+	fmt.Printf("Stream Extension Directory Entry\n")
+	fmt.Printf("================================\n")
+	fmt.Printf("\n")
+
+	fmt.Printf("NameLength: (%d)\n", sede.NameLength)
+	fmt.Printf("NameHash: (0x%04x)\n", sede.NameHash)
+	fmt.Printf("ValidDataLength: (%d)\n", sede.ValidDataLength)
+	fmt.Printf("FirstCluster: (%d)\n", sede.FirstCluster)
+	fmt.Printf("DataLength: (%d)\n", sede.DataLength)
+	fmt.Printf("\n")
+
+	fmt.Printf("General secondary flags:\n")
+	sede.GeneralSecondaryFlags.DumpBareIndented("  ")
+
+	fmt.Printf("\n")
 }
 
 func (ExfatStreamExtensionDirectoryEntry) TypeName() string {
@@ -629,7 +705,7 @@ type ExfatFileNameDirectoryEntry struct {
 }
 
 func (fnde ExfatFileNameDirectoryEntry) String() string {
-	return fmt.Sprintf("FileNameDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) FILENAME=[%s]>", fnde.GeneralSecondaryFlags, string(fnde.FileName[:]))
+	return fmt.Sprintf("FileNameDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) FILENAME=%v>", fnde.GeneralSecondaryFlags, fnde.FileName[:])
 }
 
 func (ExfatFileNameDirectoryEntry) TypeName() string {
@@ -674,7 +750,7 @@ type ExfatVendorExtensionDirectoryEntry struct {
 }
 
 func (vede ExfatVendorExtensionDirectoryEntry) String() string {
-	return fmt.Sprintf("VendorExtensionDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) GUID=(%032x)>", vede.GeneralSecondaryFlags, vede.VendorGuid)
+	return fmt.Sprintf("VendorExtensionDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) GUID=(0x%032x)>", vede.GeneralSecondaryFlags, vede.VendorGuid)
 }
 
 func (ExfatVendorExtensionDirectoryEntry) TypeName() string {
@@ -702,7 +778,7 @@ type ExfatVendorAllocationDirectoryEntry struct {
 }
 
 func (vade ExfatVendorAllocationDirectoryEntry) String() string {
-	return fmt.Sprintf("VendorAllocationDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) GUID=(%032x) VENDOR-DEFINED=(%08x) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", vade.GeneralSecondaryFlags, vade.VendorGuid, vade.VendorDefined, vade.FirstCluster, vade.DataLength)
+	return fmt.Sprintf("VendorAllocationDirectoryEntry<GENERAL-SECONDARY-FLAGS=(%08b) GUID=(0x%032x) VENDOR-DEFINED=(0x%08x) FIRST-CLUSTER=(%d) DATA-LENGTH=(%d)>", vade.GeneralSecondaryFlags, vade.VendorGuid, vade.VendorDefined, vade.FirstCluster, vade.DataLength)
 }
 
 func (ExfatVendorAllocationDirectoryEntry) TypeName() string {

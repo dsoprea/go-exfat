@@ -220,11 +220,7 @@ func (dei DirectoryEntryIndex) Dump() {
 			if fdf, ok := ide.PrimaryEntry.(*ExfatFileDirectoryEntry); ok == true {
 				fmt.Printf("  Attributes:\n")
 
-				fmt.Printf("    Read Only? [%v]\n", fdf.FileAttributes.IsReadOnly())
-				fmt.Printf("    Hidden? [%v]\n", fdf.FileAttributes.IsHidden())
-				fmt.Printf("    System? [%v]\n", fdf.FileAttributes.IsSystem())
-				fmt.Printf("    Directory? [%v]\n", fdf.FileAttributes.IsDirectory())
-				fmt.Printf("    Archive? [%v]\n", fdf.FileAttributes.IsArchive())
+				fdf.FileAttributes.DumpBareIndented("    ")
 
 				fmt.Printf("\n")
 			}

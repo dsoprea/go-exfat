@@ -368,7 +368,7 @@ func (bsh BootSectorHeader) Dump() {
 }
 
 func (bsh BootSectorHeader) String() string {
-	return fmt.Sprintf("BootSector<SN=(%08x) REVISION=(%02x)-(%02x)>", bsh.VolumeSerialNumber, bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
+	return fmt.Sprintf("BootSector<SN=(0x%08x) REVISION=(0x%02x)-(0x%02x)>", bsh.VolumeSerialNumber, bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
 }
 
 func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, sectorSize uint32, err error) {
@@ -711,7 +711,7 @@ func (er *ExfatReader) parseFat() (fat Fat, err error) {
 	mediaType := mediaTypeRaw & 0xff
 
 	if mediaType != 0xf8 {
-		log.Panicf("media-type not correct: (%08x) -> (%02x)", mediaTypeRaw, mediaType)
+		log.Panicf("media-type not correct: (0x%08x) -> (0x%02x)", mediaTypeRaw, mediaType)
 	}
 
 	// This field is mandatory and Section 4.1.2 defines its contents.
@@ -725,7 +725,7 @@ func (er *ExfatReader) parseFat() (fat Fat, err error) {
 	log.PanicIf(err)
 
 	if value != 0xffffffff {
-		log.Panicf("second fat-entry has unexpected value: (%08x)", value)
+		log.Panicf("second fat-entry has unexpected value: (0x%08x)", value)
 	}
 
 	totalFatSize := er.bootRegion.bsh.FatLength * sectorSize

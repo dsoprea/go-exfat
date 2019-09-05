@@ -78,7 +78,7 @@ func TestExfatNavigator__GetFileData(t *testing.T) {
 
 	useFat := sede.GeneralSecondaryFlags.NoFatChain() == false
 
-	err = er.WriteFromClusterChain(sede.FirstCluster, sede.DataLength, useFat, h)
+	err = er.WriteFromClusterChain(sede.FirstCluster, sede.ValidDataLength, useFat, h)
 	log.PanicIf(err)
 
 	digest := h.Sum(nil)

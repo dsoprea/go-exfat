@@ -14,7 +14,10 @@ type TreeNode struct {
 	name string
 
 	isDirectory bool
-	sede        *ExfatStreamExtensionDirectoryEntry
+
+	ide  IndexedDirectoryEntry
+	sede *ExfatStreamExtensionDirectoryEntry
+	fde  *ExfatFileDirectoryEntry
 
 	loaded bool
 
@@ -24,7 +27,7 @@ type TreeNode struct {
 	childrenMap map[string]*TreeNode
 }
 
-func NewTreeNode(name string, isDirectory bool, sede *ExfatStreamExtensionDirectoryEntry) (tn *TreeNode) {
+func NewTreeNode(name string, isDirectory bool, ide IndexedDirectoryEntry, fde *ExfatFileDirectoryEntry, sede *ExfatStreamExtensionDirectoryEntry) (tn *TreeNode) {
 
 	// TODO(dustin): !! Add tests.
 
@@ -34,7 +37,10 @@ func NewTreeNode(name string, isDirectory bool, sede *ExfatStreamExtensionDirect
 	tn = &TreeNode{
 		name:        name,
 		isDirectory: isDirectory,
-		sede:        sede,
+
+		ide:  ide,
+		sede: sede,
+		fde:  fde,
 
 		childrenFolders: childrenList,
 		childrenFiles:   childrenList,
@@ -50,6 +56,20 @@ func (tn *TreeNode) Name() string {
 	// TODO(dustin): !! Add tests.
 
 	return tn.name
+}
+
+func (tn *TreeNode) IndexedDirectoryEntry() IndexedDirectoryEntry {
+
+	// TODO(dustin): !! Add tests.
+
+	return tn.ide
+}
+
+func (tn *TreeNode) FileDirectoryEntry() *ExfatFileDirectoryEntry {
+
+	// TODO(dustin): !! Add tests.
+
+	return tn.fde
 }
 
 func (tn *TreeNode) StreamDirectoryEntry() *ExfatStreamExtensionDirectoryEntry {
@@ -106,11 +126,11 @@ func (tn *TreeNode) Lookup(pathParts []string) (lastPathParts []string, lastNode
 	return lastPathParts, lastNode, found
 }
 
-func (tn *TreeNode) AddChild(name string, isDirectory bool, sede *ExfatStreamExtensionDirectoryEntry) *TreeNode {
+func (tn *TreeNode) AddChild(name string, isDirectory bool, fde *ExfatFileDirectoryEntry, sede *ExfatStreamExtensionDirectoryEntry, ide IndexedDirectoryEntry) *TreeNode {
 
 	// TODO(dustin): !! Add tests.
 
-	childNode := NewTreeNode(name, isDirectory, sede)
+	childNode := NewTreeNode(name, isDirectory, ide, fde, sede)
 
 	// The adds are driven through a process based on a map, so the order will
 	// always be random. Use insertion sort to order the children so their order
@@ -150,7 +170,7 @@ type Tree struct {
 }
 
 func NewTree(er *ExfatReader) *Tree {
-	rootNode := NewTreeNode("", true, nil)
+	rootNode := NewTreeNode("", true, IndexedDirectoryEntry{}, nil, nil)
 
 	return &Tree{
 		er:       er,
@@ -180,10 +200,16 @@ func (tree *Tree) loadDirectory(clusterNumber uint32, node *TreeNode) (err error
 	filenames := index.Filenames()
 
 	for filename, isDirectory := range filenames {
+		ide, found := index.FindIndexedFile(filename)
+		if found != true {
+			log.Panicf("could not find indexed-entry for filename that definitely exists: [%s]", filename)
+		}
+
+		fde := index.FindIndexedFileFileDirectoryEntry(filename)
 		sede := index.FindIndexedFileStreamExtensionDirectoryEntry(filename)
 
 		// Since we load lazily, we won't immediately load the child.
-		node.AddChild(filename, isDirectory, sede)
+		node.AddChild(filename, isDirectory, fde, sede, ide)
 	}
 
 	node.loaded = true
