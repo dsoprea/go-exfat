@@ -558,7 +558,7 @@ func (er *ExfatReader) readMainBootChecksum(sectorSize uint32) (err error) {
 	_, err = io.ReadFull(er.rs, buffer)
 	log.PanicIf(err)
 
-	// TODO(dustin): Return to this.
+	// TODO(dustin): Implement the checksum validation.
 
 	return nil
 }
@@ -842,7 +842,18 @@ type ClusterVisitorFunc func(ec *ExfatCluster) (doContinue bool, err error)
 
 // EnumerateClusters calls the given callback for each cluster in the chain
 // starting from the given cluster.
-func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb ClusterVisitorFunc) (err error) {
+func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb ClusterVisitorFunc, useFat bool) (err error) {
+	defer func() {
+		if errRaw := recover(); errRaw != nil {
+			var ok bool
+			if err, ok = errRaw.(error); ok == true {
+				err = log.Wrap(err)
+			} else {
+				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
+			}
+		}
+	}()
+
 	if startingClusterNumber < 2 {
 		log.Panicf("cluster can not be less than (2): (%d)", startingClusterNumber)
 	}
@@ -862,16 +873,37 @@ func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb Cluste
 			break
 		}
 
-		if currentClusterNumber >= uint32(len(er.activeFat)) {
-			log.Panicf("cluster exceeds FAT bounds: (%d) >= (%d)", currentClusterNumber, len(er.activeFat))
-		}
+		if useFat == true {
+			if currentClusterNumber >= uint32(len(er.activeFat)) {
+				log.Panicf("cluster exceeds FAT bounds: (%d) >= (%d)", currentClusterNumber, len(er.activeFat))
+			}
 
-		nextMappedCluster := er.activeFat[currentClusterNumber-2]
-		if nextMappedCluster.IsLast() == true {
-			break
-		}
+			nextMappedCluster := er.activeFat[currentClusterNumber-2]
+			if nextMappedCluster.IsLast() == true {
+				break
+			}
 
-		currentClusterNumber = uint32(nextMappedCluster)
+			currentClusterNumber = uint32(nextMappedCluster)
+		} else {
+			// If not using fat, just move to the next, adjacent cluster.
+			//
+			// The specification implies that "no fat" means that the data
+			// could be allocated in adjacent clusters on disk:
+			//
+			//  6.3.4.2 NoFatChain Field:
+			//
+			// 	"...the associated allocation is one contiguous series of
+			// 	clusters; the corresponding FAT entries for the clusters are
+			// 	invalid and implementations shall not interpret them"
+			//
+			// However, in practice this is only used when only one cluster is
+			// needed. So, this measure is just a theoretical exercise (since we
+			// should never even reach the increment if the callback is properly
+			// consuming the correct amount of data and stopping when that is
+			// reached).
+
+			currentClusterNumber++
+		}
 	}
 
 	return nil
@@ -968,7 +1000,7 @@ func (er *ExfatReader) Parse() (err error) {
 
 // WriteFromClusterChain enumerates all sectors from all clusters starting
 // from the given one.
-func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize uint64, w io.Writer) (err error) {
+func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize uint64, useFat bool, w io.Writer) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -1017,7 +1049,7 @@ func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize
 		return doContinue, nil
 	}
 
-	err = er.EnumerateClusters(firstClusterNumber, clusterCb)
+	err = er.EnumerateClusters(firstClusterNumber, clusterCb, useFat)
 	log.PanicIf(err)
 
 	if written != dataSize {
@@ -1042,9 +1074,9 @@ func newExfatCluster(er *ExfatReader, clusterNumber uint32) (ec *ExfatCluster, e
 
 	// TODO(dustin): !! Add test.
 
-	// if clusterNumber == 0 {
-	// 	log.Panicf("cluster-number can not be (0)")
-	// }
+	if clusterNumber < 2 {
+		log.Panicf("cluster-number can not be less than two: (%d)", clusterNumber)
+	}
 
 	sectorsPerCluster := er.SectorsPerCluster()
 	sectorSize := er.SectorSize()

@@ -12,63 +12,6 @@ import (
 )
 
 // TODO(dustin): !! Add static get-data test to ExfatReader for known file cluster number.
-// TODO(dustin): !! Make sure we support getting data when stream's NoFatChain is (true).
-
-// func TestExfatNavigator_EnumerateDirectoryEntries(t *testing.T) {
-// 	defer func() {
-// 		if errRaw := recover(); errRaw != nil {
-// 			err := errRaw.(error)
-
-// 			log.PrintError(err)
-// 			t.Fatalf("Test failed.")
-// 		}
-// 	}()
-
-// 	f, er := getTestFileAndParser()
-
-// 	defer f.Close()
-
-// 	err := er.Parse()
-// 	log.PanicIf(err)
-
-// 	firstClusterNumber := er.FirstClusterOfRootDirectory()
-// 	en := NewExfatNavigator(er, firstClusterNumber)
-
-// 	cb := func(primaryEntry DirectoryEntry, secondaryEntries []DirectoryEntry) (err error) {
-// 		fmt.Printf("[%s] %s\n", reflect.TypeOf(primaryEntry), primaryEntry)
-
-// 		if len(secondaryEntries) > 0 {
-// 			for i, de := range secondaryEntries {
-// 				fmt.Printf("> (%d) %s\n", i, de)
-// 			}
-
-// 			fmt.Printf("\n")
-// 		}
-
-// 		if _, ok := primaryEntry.(*ExfatFileDirectoryEntry); ok == true {
-// 			mf := MultipartFilename(secondaryEntries)
-// 			filename := mf.Filename()
-
-// 			fmt.Printf("Filename: [%s]\n", filename)
-// 			fmt.Printf("\n")
-// 		}
-
-// 		return nil
-// 	}
-
-// 	err = en.EnumerateDirectoryEntries(cb)
-// 	log.PanicIf(err)
-
-// 	// primaryEntry = primaryEntry
-// 	// secondaryEntries = secondaryEntries
-
-// 	// er.bootRegion.bsh.Dump()
-// 	// primaryEntry.Dump()
-
-// 	// for i, sde := range secondaryEntries {
-// 	// 	fmt.Printf("SE (%d): %s\n", i, sde)
-// 	// }
-// }
 
 func TestExfatNavigator_Dump(t *testing.T) {
 	defer func() {
@@ -94,7 +37,7 @@ func TestExfatNavigator_Dump(t *testing.T) {
 
 	// Get index.
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	index.Dump()
@@ -124,7 +67,7 @@ func TestExfatNavigator__GetFileData(t *testing.T) {
 
 	// Get index.
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	// Get data.
@@ -133,7 +76,9 @@ func TestExfatNavigator__GetFileData(t *testing.T) {
 
 	h := sha1.New()
 
-	err = er.WriteFromClusterChain(sede.FirstCluster, sede.DataLength, h)
+	useFat := sede.GeneralSecondaryFlags.NoFatChain() == false
+
+	err = er.WriteFromClusterChain(sede.FirstCluster, sede.DataLength, useFat, h)
 	log.PanicIf(err)
 
 	digest := h.Sum(nil)
@@ -169,7 +114,7 @@ func TestExfatNavigator_IndexDirectoryEntries(t *testing.T) {
 
 	// Get index.
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	if len(index) != 4 {
@@ -247,13 +192,13 @@ func TestExfatNavigator__NavigateSubdirectory(t *testing.T) {
 	firstClusterNumber := er.FirstClusterOfRootDirectory()
 	en := NewExfatNavigator(er, firstClusterNumber)
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	sede := index.FindIndexedFileStreamExtensionDirectoryEntry("testdirectory")
 	subfolderEn := NewExfatNavigator(er, sede.FirstCluster)
 
-	subfolderIndex, err := subfolderEn.IndexDirectoryEntries()
+	subfolderIndex, _, _, err := subfolderEn.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	expectedFilenames := map[string]bool{
@@ -276,7 +221,7 @@ func TestDirectoryEntryIndex_Filenames(t *testing.T) {
 	firstClusterNumber := er.FirstClusterOfRootDirectory()
 	en := NewExfatNavigator(er, firstClusterNumber)
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	filenames := index.Filenames()
@@ -307,7 +252,7 @@ func TestDirectoryEntryIndex_FileCount(t *testing.T) {
 	firstClusterNumber := er.FirstClusterOfRootDirectory()
 	en := NewExfatNavigator(er, firstClusterNumber)
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	if index.FileCount() != 7 {
@@ -326,7 +271,7 @@ func TestDirectoryEntryIndex_GetFile(t *testing.T) {
 	firstClusterNumber := er.FirstClusterOfRootDirectory()
 	en := NewExfatNavigator(er, firstClusterNumber)
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	files := make([]string, index.FileCount())
@@ -360,7 +305,7 @@ func TestDirectoryEntryIndex_FindIndexedFile(t *testing.T) {
 	firstClusterNumber := er.FirstClusterOfRootDirectory()
 	en := NewExfatNavigator(er, firstClusterNumber)
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	for i := 0; i < index.FileCount(); i++ {
@@ -389,7 +334,7 @@ func TestDirectoryEntryIndex_FindIndexedFileFileDirectoryEntry(t *testing.T) {
 	firstClusterNumber := er.FirstClusterOfRootDirectory()
 	en := NewExfatNavigator(er, firstClusterNumber)
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	for i := 0; i < index.FileCount(); i++ {
@@ -414,7 +359,7 @@ func TestDirectoryEntryIndex_FindIndexedFileStreamExtensionDirectoryEntry(t *tes
 	firstClusterNumber := er.FirstClusterOfRootDirectory()
 	en := NewExfatNavigator(er, firstClusterNumber)
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	sede := index.FindIndexedFileStreamExtensionDirectoryEntry("2-delahaye-type-165-cabriolet-dsc_8025.jpg")

@@ -30,7 +30,7 @@ func NewExfatNavigator(er *ExfatReader, firstClusterNumber uint32) (en *ExfatNav
 
 type DirectoryEntryVisitorFunc func(primaryEntry DirectoryEntry, secondaryEntries []DirectoryEntry) (err error)
 
-func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc) (err error) {
+func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc) (visitedClusters, visitedSectors []uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -52,6 +52,9 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc
 	var primaryEntry DirectoryEntry
 	var secondaryEntries []DirectoryEntry
 
+	visitedClusters = make([]uint32, 0)
+	visitedSectors = make([]uint32, 0)
+
 	cvf := func(ec *ExfatCluster) (doContinue bool, err error) {
 		defer func() {
 			if errRaw := recover(); errRaw != nil {
@@ -63,6 +66,8 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc
 				}
 			}
 		}()
+
+		visitedClusters = append(visitedClusters, ec.ClusterNumber())
 
 		// Enumerate sectors.
 
@@ -78,6 +83,7 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc
 				}
 			}()
 
+			visitedSectors = append(visitedSectors, sectorNumber)
 			sectorSize := en.er.SectorSize()
 
 			i := 0
@@ -152,10 +158,23 @@ func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc
 		return true, nil
 	}
 
-	err = en.er.EnumerateClusters(en.firstClusterNumber, cvf)
+	// The specification is unclear whether the directory-entry clusters are
+	// inline (useFat == false) or use the FAT. However, this seems to imply
+	// that it's one long chain:
+	//
+	// (from the 6.13 "Directory Structure" table):
+	//
+	// 	"N, the number of DirectoryEntry fields, is the size, in bytes, of the
+	// 	cluster chain which contains the given directory, divided by the size of
+	// 	a DirectoryEntry field, 32 bytes."
+	//
+	// So, we'll instruct the enumerator to visit adjacent cluster chains.
+	useFat := false
+
+	err = en.er.EnumerateClusters(en.firstClusterNumber, cvf, useFat)
 	log.PanicIf(err)
 
-	return nil
+	return visitedClusters, visitedSectors, nil
 }
 
 type IndexedDirectoryEntry struct {
@@ -301,7 +320,7 @@ func (dei DirectoryEntryIndex) FindIndexedFileStreamExtensionDirectoryEntry(file
 	return de.(*ExfatStreamExtensionDirectoryEntry)
 }
 
-func (en *ExfatNavigator) IndexDirectoryEntries() (index DirectoryEntryIndex, err error) {
+func (en *ExfatNavigator) IndexDirectoryEntries() (index DirectoryEntryIndex, visitedClusters, visitedSectors []uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
 			var ok bool
@@ -341,8 +360,8 @@ func (en *ExfatNavigator) IndexDirectoryEntries() (index DirectoryEntryIndex, er
 		return nil
 	}
 
-	err = en.EnumerateDirectoryEntries(cb)
+	visitedClusters, visitedSectors, err = en.EnumerateDirectoryEntries(cb)
 	log.PanicIf(err)
 
-	return index, nil
+	return index, visitedClusters, visitedSectors, nil
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/go-restruct/restruct"
 )
 
+// TODO(dustin): Implement the timestamp timezones.
+
 type EntryType uint8
 
 func (et EntryType) IsEndOfDirectory() bool {
@@ -304,9 +306,6 @@ func (et ExfatTimestamp) Year() int {
 }
 
 func (et ExfatTimestamp) Timestamp() time.Time {
-
-	// TODO(dustin): Implement the timezone.
-
 	return time.Date(et.Year(), time.Month(et.Month()), et.Day(), et.Hour(), et.Minute(), et.Second(), 0, time.Local)
 }
 
@@ -550,6 +549,11 @@ func (gsf GeneralSecondaryFlags) IsAllocationPossible() bool {
 
 func (gsf GeneralSecondaryFlags) NoFatChain() bool {
 	return gsf&2 > 0
+}
+
+func (gsf GeneralSecondaryFlags) String() string {
+	return fmt.Sprintf("GeneralSecondaryFlags<IsAllocationPossible=[%v] NoFatChain=[%v]>",
+		gsf.IsAllocationPossible(), gsf.NoFatChain())
 }
 
 type ExfatStreamExtensionDirectoryEntry struct {

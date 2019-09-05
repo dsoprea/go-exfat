@@ -174,7 +174,7 @@ func (tree *Tree) loadDirectory(clusterNumber uint32, node *TreeNode) (err error
 
 	en := NewExfatNavigator(tree.er, clusterNumber)
 
-	index, err := en.IndexDirectoryEntries()
+	index, _, _, err := en.IndexDirectoryEntries()
 	log.PanicIf(err)
 
 	filenames := index.Filenames()

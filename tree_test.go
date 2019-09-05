@@ -24,6 +24,12 @@ func TestTree_List(t *testing.T) {
 	files, nodes, err := tree.List()
 	log.PanicIf(err)
 
+	for _, filepath := range files {
+		fmt.Printf("%s\n", filepath)
+		fmt.Printf("%s\n", nodes[filepath].sede.GeneralSecondaryFlags)
+		fmt.Printf("\n")
+	}
+
 	// Check filenames.
 
 	expectedFiles := []string{
@@ -43,12 +49,12 @@ func TestTree_List(t *testing.T) {
 	}
 
 	if reflect.DeepEqual(files, expectedFiles) != true {
-		for i, filePath := range files {
-			fmt.Printf("ACTUAL: (%d) [%s]\n", i, filePath)
+		for i, filepath := range files {
+			fmt.Printf("ACTUAL: (%d) [%s]\n", i, filepath)
 		}
 
-		for i, filePath := range expectedFiles {
-			fmt.Printf("EXPECTED: (%d) [%s]\n", i, filePath)
+		for i, filepath := range expectedFiles {
+			fmt.Printf("EXPECTED: (%d) [%s]\n", i, filepath)
 		}
 
 		t.Fatalf("Files not correct.")
