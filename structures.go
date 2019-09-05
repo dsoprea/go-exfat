@@ -337,6 +337,14 @@ func (bsh BootSectorHeader) UseSecondFat() bool {
 	return VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0
 }
 
+func (bsh BootSectorHeader) SectorSize() uint32 {
+	return uint32(math.Pow(2, float64(bsh.BytesPerSectorShift)))
+}
+
+func (bsh BootSectorHeader) SectorsPerCluster() uint32 {
+	return uint32(math.Pow(float64(2), float64(bsh.SectorsPerClusterShift)))
+}
+
 func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("Boot Sector Header\n")
 	fmt.Printf("==================\n")
@@ -352,7 +360,9 @@ func (bsh BootSectorHeader) Dump() {
 	fmt.Printf("VolumeSerialNumber: (0x%08x)\n", bsh.VolumeSerialNumber)
 	fmt.Printf("FileSystemRevision: (0x%02x) (0x%02x)\n", bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
 	fmt.Printf("BytesPerSectorShift: (%d)\n", bsh.BytesPerSectorShift)
+	fmt.Printf("-> Sector-size: 2^(%d) -> %d\n", bsh.BytesPerSectorShift, bsh.SectorSize())
 	fmt.Printf("SectorsPerClusterShift: (%d)\n", bsh.SectorsPerClusterShift)
+	fmt.Printf("-> Sectors-per-cluster: 2^(%d) -> %d\n", bsh.SectorsPerClusterShift, bsh.SectorsPerCluster())
 	fmt.Printf("NumberOfFats: (%d)\n", bsh.NumberOfFats)
 	fmt.Printf("DriveSelect: (%d)\n", bsh.DriveSelect)
 	fmt.Printf("PercentInUse: (%d)\n", bsh.PercentInUse)
@@ -366,6 +376,13 @@ func (bsh BootSectorHeader) Dump() {
 
 	fmt.Printf("\n")
 }
+
+// func (bsh BootSectorHeader) UseFirstFat() bool {
+// 	return VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat == 0
+// }
+
+// func (bsh BootSectorHeader) UseSecondFat() bool {
+// 	return VolumeFlags(bsh.VolumeFlags)&VolumeFlagActiveFat > 0
 
 func (bsh BootSectorHeader) String() string {
 	return fmt.Sprintf("BootSector<SN=(0x%08x) REVISION=(0x%02x)-(0x%02x)>", bsh.VolumeSerialNumber, bsh.FileSystemRevision[0], bsh.FileSystemRevision[1])
@@ -401,7 +418,7 @@ func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, sectorSize ui
 	}
 
 	// Forward through the excess bytes.
-	sectorSize = uint32(math.Pow(2, float64(bsh.BytesPerSectorShift)))
+	sectorSize = bsh.SectorSize()
 	excessByteCount := sectorSize - 512
 
 	if excessByteCount != 0 {
@@ -821,7 +838,14 @@ func (er *ExfatReader) SectorsPerCluster() uint32 {
 
 	// TODO(dustin): !! Add test.
 
-	return uint32(math.Pow(float64(2), float64(er.bootRegion.bsh.SectorsPerClusterShift)))
+	return er.bootRegion.bsh.SectorsPerCluster()
+}
+
+func (er *ExfatReader) ActiveBootRegion() BootSectorHeader {
+
+	// TODO(dustin): !! Add test.
+
+	return er.bootRegion.bsh
 }
 
 func (er *ExfatReader) FirstClusterOfRootDirectory() uint32 {
