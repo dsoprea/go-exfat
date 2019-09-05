@@ -1,28 +1,28 @@
 package exfat
 
 import (
-	"unicode/utf8"
+	"unicode/utf16"
 )
 
 func UnicodeFromAscii(raw []byte, unicodeCharCount int) string {
 	// `VolumeLabel` is a Unicode-encoded string and the character-count
-	// corresponds to the number of Unicode characters.
+	// corresponds to the number of Unicode characters. The character-count may
+	// still include trailing NULs, sowe intentional skip over those.
 
-	decodedString := make([]rune, unicodeCharCount)
-	realSize := 0
+	decodedString := make([]rune, 0)
 	for i := 0; i < unicodeCharCount; i++ {
-		r, _ := utf8.DecodeRune(raw[i*2 : i*2+1])
+		wchar1 := uint16(raw[i*2+1])
+		wchar2 := uint16(raw[i*2])
 
-		// NUL. We're probably in the extra space as the end of the last part.
-		if r == 0 {
+		bytes := []uint16{wchar1<<8 | wchar2}
+		runes := utf16.Decode(bytes)
+
+		if runes[0] == 0 {
 			continue
 		}
 
-		decodedString[i] = r
-		realSize++
+		decodedString = append(decodedString, runes...)
 	}
-
-	decodedString = decodedString[:realSize]
 
 	return string(decodedString)
 }
