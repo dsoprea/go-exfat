@@ -305,12 +305,10 @@ func (et ExfatTimestamp) Year() int {
 	return 1980 + int(et&4261412864)>>25
 }
 
-func (et ExfatTimestamp) Timestamp() time.Time {
-	return time.Date(et.Year(), time.Month(et.Month()), et.Day(), et.Hour(), et.Minute(), et.Second(), 0, time.Local)
-}
+func (et ExfatTimestamp) TimestampWithOffset(offset int) time.Time {
+	location := time.FixedZone("(from exFAT)", offset)
 
-func (et ExfatTimestamp) String() string {
-	return fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d", et.Year(), et.Month(), et.Day(), et.Hour(), et.Minute(), et.Second())
+	return time.Date(et.Year(), time.Month(et.Month()), et.Day(), et.Hour(), et.Minute(), et.Second(), 0, location)
 }
 
 type FileAttributes uint16
@@ -357,13 +355,13 @@ type ExfatFileDirectoryEntry struct {
 	Reserved1 uint16
 
 	// CreateTimestamp: This field is mandatory and Section 7.4.5 defines its contents.
-	CreateTimestamp ExfatTimestamp
+	CreateTimestamp_ ExfatTimestamp
 
 	// LastModifiedTimestamp: This field is mandatory and Section 7.4.6 defines its contents.
-	LastModifiedTimestamp ExfatTimestamp
+	LastModifiedTimestamp_ ExfatTimestamp
 
 	// LastAccessedTimestamp: This field is mandatory and Section 7.4.7 defines its contents.
-	LastAccessedTimestamp ExfatTimestamp
+	LastAccessedTimestamp_ ExfatTimestamp
 
 	// Create10msIncrement: This field is mandatory and Section 7.4.5 defines its contents.
 	Create10msIncrement uint8
@@ -387,7 +385,7 @@ type ExfatFileDirectoryEntry struct {
 func (fdf ExfatFileDirectoryEntry) String() string {
 	return fmt.Sprintf("FileDirectoryEntry<SECONDARY-COUNT=(%d) CTIME=[%s] MTIME=[%s] ATIME=[%s]>",
 		fdf.SecondaryCount_,
-		fdf.CreateTimestamp, fdf.LastModifiedTimestamp, fdf.LastAccessedTimestamp)
+		fdf.CreateTimestamp(), fdf.LastModifiedTimestamp(), fdf.LastAccessedTimestamp())
 }
 
 func (fdf ExfatFileDirectoryEntry) SecondaryCount() uint8 {
@@ -396,6 +394,18 @@ func (fdf ExfatFileDirectoryEntry) SecondaryCount() uint8 {
 
 func (fdf ExfatFileDirectoryEntry) TypeName() string {
 	return "File"
+}
+
+func (fdf ExfatFileDirectoryEntry) CreateTimestamp() time.Time {
+	return fdf.CreateTimestamp_.TimestampWithOffset(int(fdf.CreateUtcOffset))
+}
+
+func (fdf ExfatFileDirectoryEntry) LastModifiedTimestamp() time.Time {
+	return fdf.LastModifiedTimestamp_.TimestampWithOffset(int(fdf.LastModifiedUtcOffset))
+}
+
+func (fdf ExfatFileDirectoryEntry) LastAccessedTimestamp() time.Time {
+	return fdf.LastAccessedTimestamp_.TimestampWithOffset(int(fdf.LastAccessedUtcOffset))
 }
 
 type ExfatAllocationBitmapDirectoryEntry struct {
