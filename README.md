@@ -14,12 +14,12 @@ that can be used to explore the filesystem and extract files from it.
 
 # Command-Line Tools
 
-- *exfat_print_boot_sector_header*: Dump filesystem parameters. Largely sourced
-  from the boot-sector header.
 - *exfat_list_contents*: List all files with or without complete directory-entry
   information.
 - *exfat_extract_file*: Extract a single file to a file or STDOUT. May also be
   used to print all clusters and sectors visited for the extraction.
+- *exfat_print_boot_sector_header*: Dump filesystem parameters. Largely sourced
+  from the boot-sector header.
 
 
 # Notes
@@ -32,7 +32,7 @@ that can be used to explore the filesystem and extract files from it.
     villagers rejoiced).
 
   - Allocation bitmaps are not read, so it's not possible to know which clusters
-    are or are not used. This is not requird for browsing the filesystem or
+    are or are not used. This is not required for browsing the filesystem or
     reading files.
 
 - Timestamps are accurate to one second.
