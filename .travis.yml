@@ -19,9 +19,7 @@ script:
   # Just calculate coverage over the main library.
   - goveralls -v -service=travis-ci -package github.com/dsoprea/go-exfat
 before_deploy:
-#  - gox -output "build/{{.Dir}}.{{.OS}}-{{.Arch}}" ./...
-# TODO(dustin): !! Just build the one tool, to speed-up testing.
-  - gox -output "build/{{.Dir}}.{{.OS}}-{{.Arch}}" ./cmd/exfat_extract_file
+  - gox -output "build/{{.Dir}}.{{.OS}}-{{.Arch}}" ./cmd/...
 deploy:
   skip_cleanup: true
   provider: releases
