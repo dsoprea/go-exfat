@@ -507,7 +507,7 @@ type ExfatVolumeGuidDirectoryEntry struct {
 
 // String returns a descriptive string.
 func (vgde ExfatVolumeGuidDirectoryEntry) String() string {
-	return fmt.Sprintf("VolumeGuidDirectoryEntry<SECONDARY-COUNT=(%d) SET-CHECKSUM=(0x%04x) GENERAL-PRIMARY-FLAGS=(%016b) GUID=[0x%064x]>", vgde.SecondaryCountRaw, vgde.SetChecksum, vgde.GeneralPrimaryFlags, vgde.VolumeGuid)
+	return fmt.Sprintf("VolumeGuidDirectoryEntry<SECONDARY-COUNT=(%d) SET-CHECKSUM=(0x%04x) GENERAL-PRIMARY-FLAGS=(0x%04x) GUID=[0x%016x...]>", vgde.SecondaryCountRaw, vgde.SetChecksum, vgde.GeneralPrimaryFlags, vgde.VolumeGuid[:4])
 }
 
 // SecondaryCount returns the count of associated secondary-records.

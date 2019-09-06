@@ -297,7 +297,7 @@ func TestDirectoryEntryIndex_GetFile(t *testing.T) {
 	}
 }
 
-func TestDirectoryEntryIndex_FindIndexedFile(t *testing.T) {
+func TestDirectoryEntryIndex_FindIndexedFile__Hit(t *testing.T) {
 	f, er := getTestFileAndParser()
 
 	defer f.Close()
@@ -326,7 +326,27 @@ func TestDirectoryEntryIndex_FindIndexedFile(t *testing.T) {
 	}
 }
 
-func TestDirectoryEntryIndex_FindIndexedFileFileDirectoryEntry(t *testing.T) {
+func TestDirectoryEntryIndex_FindIndexedFile__Miss(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	firstClusterNumber := er.FirstClusterOfRootDirectory()
+	en := NewExfatNavigator(er, firstClusterNumber)
+
+	index, _, _, err := en.IndexDirectoryEntries()
+	log.PanicIf(err)
+
+	_, found := index.FindIndexedFile("invalid-file")
+	if found != false {
+		t.Fatalf("Expected invalid-file to not be found.")
+	}
+}
+
+func TestDirectoryEntryIndex_FindIndexedFileFileDirectoryEntry__Hit(t *testing.T) {
 	f, er := getTestFileAndParser()
 
 	defer f.Close()
@@ -351,7 +371,27 @@ func TestDirectoryEntryIndex_FindIndexedFileFileDirectoryEntry(t *testing.T) {
 	}
 }
 
-func TestDirectoryEntryIndex_FindIndexedFileStreamExtensionDirectoryEntry(t *testing.T) {
+func TestDirectoryEntryIndex_FindIndexedFileFileDirectoryEntry__Miss(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	firstClusterNumber := er.FirstClusterOfRootDirectory()
+	en := NewExfatNavigator(er, firstClusterNumber)
+
+	index, _, _, err := en.IndexDirectoryEntries()
+	log.PanicIf(err)
+
+	fdf := index.FindIndexedFileFileDirectoryEntry("invalid-file")
+	if fdf != nil {
+		t.Fatalf("Expected file miss.")
+	}
+}
+
+func TestDirectoryEntryIndex_FindIndexedFileStreamExtensionDirectoryEntry__Hit(t *testing.T) {
 	f, er := getTestFileAndParser()
 
 	defer f.Close()
@@ -368,5 +408,93 @@ func TestDirectoryEntryIndex_FindIndexedFileStreamExtensionDirectoryEntry(t *tes
 	sede := index.FindIndexedFileStreamExtensionDirectoryEntry("2-delahaye-type-165-cabriolet-dsc_8025.jpg")
 	if sede.FirstCluster != 7 {
 		t.Fatalf("Stream-extension entry-type not found: (%d)", sede.FirstCluster)
+	}
+}
+
+func TestDirectoryEntryIndex_FindIndexedFileDirectoryEntry__Hit(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	firstClusterNumber := er.FirstClusterOfRootDirectory()
+	en := NewExfatNavigator(er, firstClusterNumber)
+
+	index, _, _, err := en.IndexDirectoryEntries()
+	log.PanicIf(err)
+
+	de := index.FindIndexedFileDirectoryEntry("2-delahaye-type-165-cabriolet-dsc_8025.jpg", "File", 0)
+	if de == nil {
+		t.Fatalf("Could not find entry.")
+	}
+
+	fdf := de.(*ExfatFileDirectoryEntry)
+
+	fdfExpected := index.FindIndexedFileFileDirectoryEntry("2-delahaye-type-165-cabriolet-dsc_8025.jpg")
+
+	if fdf != fdfExpected {
+		t.Fatalf("Entry not found.")
+	}
+}
+
+func TestDirectoryEntryIndex_FindIndexedFileDirectoryEntry__MissOnFile(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	firstClusterNumber := er.FirstClusterOfRootDirectory()
+	en := NewExfatNavigator(er, firstClusterNumber)
+
+	index, _, _, err := en.IndexDirectoryEntries()
+	log.PanicIf(err)
+
+	de := index.FindIndexedFileDirectoryEntry("invalid-file", "File", 0)
+	if de != nil {
+		t.Fatalf("Expected lookup miss.")
+	}
+}
+
+func TestDirectoryEntryIndex_FindIndexedFileDirectoryEntry__MissOnType(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	firstClusterNumber := er.FirstClusterOfRootDirectory()
+	en := NewExfatNavigator(er, firstClusterNumber)
+
+	index, _, _, err := en.IndexDirectoryEntries()
+	log.PanicIf(err)
+
+	de := index.FindIndexedFileDirectoryEntry("2-delahaye-type-165-cabriolet-dsc_8025.jpg", "InvalidType", 0)
+	if de != nil {
+		t.Fatalf("Expected lookup miss.")
+	}
+}
+
+func TestDirectoryEntryIndex_FindIndexedFileDirectoryEntry__MissOnIndex(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	firstClusterNumber := er.FirstClusterOfRootDirectory()
+	en := NewExfatNavigator(er, firstClusterNumber)
+
+	index, _, _, err := en.IndexDirectoryEntries()
+	log.PanicIf(err)
+
+	de := index.FindIndexedFileDirectoryEntry("2-delahaye-type-165-cabriolet-dsc_8025.jpg", "FileName", 4)
+	if de != nil {
+		t.Fatalf("Expected lookup miss.")
 	}
 }

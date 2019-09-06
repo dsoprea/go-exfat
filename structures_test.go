@@ -167,6 +167,27 @@ func TestExfatReader_parseFats(t *testing.T) {
 	// TODO(dustin): Add additional validation on FAT structures.
 }
 
+func TestExfatReader_parseFats__NotLoaded(t *testing.T) {
+	defer func() {
+		errRaw := recover()
+		if errRaw == nil {
+			t.Fatalf("Expected error when BSH not yet loaded.")
+		}
+
+		err := errRaw.(error)
+		if err.Error() != "boot-sectors not loaded yet" {
+			t.Fatalf("Expected not-loaded error.")
+		}
+	}()
+
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	_, err := er.parseFats()
+	log.PanicIf(err)
+}
+
 func TestExfatReader_Parse(t *testing.T) {
 	f, er := getTestFileAndParser()
 
@@ -174,4 +195,86 @@ func TestExfatReader_Parse(t *testing.T) {
 
 	err := er.Parse()
 	log.PanicIf(err)
+}
+
+func TestExfatReader_getCurrentSector(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	sector, offset := er.getCurrentSector()
+	if sector == 0 || offset != 0 {
+		t.Fatalf("Current sector not correct: (%d)", sector)
+	}
+}
+
+func TestExfatReader_printCurrentSector(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	er.printCurrentSector()
+}
+
+func TestExfatReader_assertAlignedToSector__ok(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	er.assertAlignedToSector()
+}
+
+func TestExfatReader_assertAlignedToSector__fail(t *testing.T) {
+	defer func() {
+		err := recover()
+		if err == nil {
+			t.Fatalf("Expected failure when misaligned.")
+		}
+	}()
+
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	_, err = f.Seek(1, os.SEEK_CUR)
+	log.PanicIf(err)
+
+	er.assertAlignedToSector()
+}
+
+func TestExfatReader_ActiveBootSectorHeader(t *testing.T) {
+	f, er := getTestFileAndParser()
+
+	defer f.Close()
+
+	err := er.Parse()
+	log.PanicIf(err)
+
+	if er.ActiveBootSectorHeader() != er.bootRegion.bsh {
+		t.Fatalf("ActiveBootSectorHeader not correct.")
+	}
+}
+
+func TestMappedCluster_IsBad__true(t *testing.T) {
+	if MappedCluster(0).IsBad() != false {
+		t.Fatalf("Expected MC to not be bad.")
+	}
+}
+
+func TestMappedCluster_IsBad__false(t *testing.T) {
+	if MappedCluster(0xfffffff7).IsBad() != true {
+		t.Fatalf("Expected MC to be bad.")
+	}
 }

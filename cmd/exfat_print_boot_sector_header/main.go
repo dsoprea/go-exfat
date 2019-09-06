@@ -43,5 +43,5 @@ func main() {
 	err = er.Parse()
 	log.PanicIf(err)
 
-	er.ActiveBootRegion().Dump()
+	er.ActiveBootSectorHeader().Dump()
 }

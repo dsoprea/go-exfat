@@ -29,9 +29,6 @@ type TreeNode struct {
 
 // NewTreeNode returns a new instance of TreeNode.
 func NewTreeNode(name string, isDirectory bool, ide IndexedDirectoryEntry, fde *ExfatFileDirectoryEntry, sede *ExfatStreamExtensionDirectoryEntry) (tn *TreeNode) {
-
-	// TODO(dustin): !! Add tests.
-
 	childrenList := make(sort.StringSlice, 0)
 	childrenMap := make(map[string]*TreeNode)
 
@@ -55,18 +52,12 @@ func NewTreeNode(name string, isDirectory bool, ide IndexedDirectoryEntry, fde *
 // Name returns the name of the current file or directory (without any of its
 // parents' path information).
 func (tn *TreeNode) Name() string {
-
-	// TODO(dustin): !! Add tests.
-
 	return tn.name
 }
 
 // IndexedDirectoryEntry returns the underlying, low-level directory-entry
 // information that were retrieved for this directory.
 func (tn *TreeNode) IndexedDirectoryEntry() IndexedDirectoryEntry {
-
-	// TODO(dustin): !! Add tests.
-
 	return tn.ide
 }
 
@@ -74,9 +65,6 @@ func (tn *TreeNode) IndexedDirectoryEntry() IndexedDirectoryEntry {
 // part of the IDE but this is important and is nicer to have directly
 // available).
 func (tn *TreeNode) FileDirectoryEntry() *ExfatFileDirectoryEntry {
-
-	// TODO(dustin): !! Add tests.
-
 	return tn.fde
 }
 
@@ -84,52 +72,34 @@ func (tn *TreeNode) FileDirectoryEntry() *ExfatFileDirectoryEntry {
 // actually a part of the IDE but this is important and is nicer to have
 // directly available).
 func (tn *TreeNode) StreamDirectoryEntry() *ExfatStreamExtensionDirectoryEntry {
-
-	// TODO(dustin): !! Add tests.
-
 	return tn.sede
 }
 
 // IsDirectory indicates whether the node is a directory or not.
 func (tn *TreeNode) IsDirectory() bool {
-
-	// TODO(dustin): !! Add tests.
-
 	return tn.isDirectory
 }
 
 // ChildFolders lists any child-folders. Only applies to directory nodes.
 func (tn *TreeNode) ChildFolders() []string {
-
-	// TODO(dustin): !! Add tests.
-
 	return tn.childrenFolders
 }
 
 // ChildFiles lists any child files. Only applies to directory nodes.
 func (tn *TreeNode) ChildFiles() []string {
-
-	// TODO(dustin): !! Add tests.
-
 	return tn.childrenFiles
 }
 
 // GetChild a particular child node.
 func (tn *TreeNode) GetChild(filename string) *TreeNode {
-
-	// TODO(dustin): !! Add tests.
-
 	return tn.childrenMap[filename]
 }
 
 // Lookup finds the given relative path within our children.
 func (tn *TreeNode) Lookup(pathParts []string) (lastPathParts []string, lastNode *TreeNode, found *TreeNode) {
-
-	// TODO(dustin): !! Add tests.
-
 	if len(pathParts) == 0 {
 		// We've reached and found the last part.
-		return pathParts, tn, tn
+		return nil, nil, tn
 	}
 
 	childNode := tn.childrenMap[pathParts[0]]
@@ -144,9 +114,6 @@ func (tn *TreeNode) Lookup(pathParts []string) (lastPathParts []string, lastNode
 
 // AddChild registers a new child to this node. It's stored in sorted order.
 func (tn *TreeNode) AddChild(name string, isDirectory bool, fde *ExfatFileDirectoryEntry, sede *ExfatStreamExtensionDirectoryEntry, ide IndexedDirectoryEntry) *TreeNode {
-
-	// TODO(dustin): !! Add tests.
-
 	childNode := NewTreeNode(name, isDirectory, ide, fde, sede)
 
 	// The adds are driven through a process based on a map, so the order will
@@ -204,8 +171,6 @@ func (tree *Tree) loadDirectory(clusterNumber uint32, node *TreeNode) (err error
 		}
 	}()
 
-	// TODO(dustin): !! Add tests.
-
 	en := NewExfatNavigator(tree.er, clusterNumber)
 
 	index, _, _, err := en.IndexDirectoryEntries()
@@ -239,8 +204,6 @@ func (tree *Tree) Load() (err error) {
 		}
 	}()
 
-	// TODO(dustin): !! Add tests.
-
 	clusterNumber := tree.er.FirstClusterOfRootDirectory()
 
 	err = tree.loadDirectory(clusterNumber, tree.rootNode)
@@ -257,12 +220,17 @@ func (tree *Tree) Lookup(pathParts []string) (node *TreeNode, err error) {
 		}
 	}()
 
+	startNode := tree.rootNode
+
 	for {
-		lastPathParts, lastNode, foundNode := tree.rootNode.Lookup(pathParts)
+		lastPathParts, lastNode, foundNode := startNode.Lookup(pathParts)
 		if foundNode != nil {
-			// Shouldn't be possible.
-			if len(lastPathParts) != 0 {
-				log.Panicf("it looks like we found the node but the path-parts were not exhausted")
+			// The node was found. Make sure that it's fully constituted before
+			// returning.
+
+			if foundNode.isDirectory == true && foundNode.loaded == false {
+				err := tree.loadDirectory(foundNode.sede.FirstCluster, foundNode)
+				log.PanicIf(err)
 			}
 
 			return foundNode, nil
@@ -276,6 +244,9 @@ func (tree *Tree) Lookup(pathParts []string) (node *TreeNode, err error) {
 
 		err := tree.loadDirectory(lastNode.sede.FirstCluster, lastNode)
 		log.PanicIf(err)
+
+		startNode = lastNode
+		pathParts = lastPathParts
 	}
 }
 
@@ -290,8 +261,6 @@ func (tree *Tree) Visit(cb TreeVisitorFunc) (err error) {
 			err = log.Wrap(errRaw.(error))
 		}
 	}()
-
-	// TODO(dustin): !! Add tests.
 
 	pathParts := make([]string, 0)
 
@@ -308,12 +277,8 @@ func (tree *Tree) visit(pathParts []string, node *TreeNode, cb TreeVisitorFunc) 
 		}
 	}()
 
-	// TODO(dustin): !! Add tests.
-
 	err = cb(pathParts, node)
 	log.PanicIf(err)
-
-	files := make([]*TreeNode, 0)
 
 	for _, childFolderName := range node.childrenFolders {
 		childNode := node.childrenMap[childFolderName]
@@ -322,18 +287,14 @@ func (tree *Tree) visit(pathParts []string, node *TreeNode, cb TreeVisitorFunc) 
 		copy(childPathParts, pathParts)
 		childPathParts[len(childPathParts)-1] = childNode.name
 
-		if childNode.isDirectory == true {
-			// Finish loading node.
-			if childNode.loaded == false {
-				err := tree.loadDirectory(childNode.sede.FirstCluster, childNode)
-				log.PanicIf(err)
-			}
-
-			err := tree.visit(childPathParts, childNode, cb)
+		// Finish loading node.
+		if childNode.loaded == false {
+			err := tree.loadDirectory(childNode.sede.FirstCluster, childNode)
 			log.PanicIf(err)
-		} else {
-			files = append(files, childNode)
 		}
+
+		err := tree.visit(childPathParts, childNode, cb)
+		log.PanicIf(err)
 	}
 
 	// Do the files all at once, at the bottom.

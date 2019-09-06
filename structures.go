@@ -483,7 +483,7 @@ func (er *ExfatReader) readExtendedBootSector(sectorSize uint32) (extendedBootCo
 	log.PanicIf(err)
 
 	if extendedBootSignature != requiredExtendedBootSignature {
-		panic(fmt.Errorf("extended boot-signature not correct: %x", extendedBootSignature))
+		log.Panicf("extended boot-signature not correct: %x", extendedBootSignature)
 	}
 
 	return extendedBootCode, nil
@@ -825,9 +825,9 @@ func (er *ExfatReader) SectorsPerCluster() uint32 {
 	return er.bootRegion.bsh.SectorsPerCluster()
 }
 
-// ActiveBootRegion returns the active boot-sector struct (whether main or
+// ActiveBootSectorHeader returns the active boot-sector struct (whether main or
 // backup).
-func (er *ExfatReader) ActiveBootRegion() BootSectorHeader {
+func (er *ExfatReader) ActiveBootSectorHeader() BootSectorHeader {
 
 	// TODO(dustin): !! Add test.
 
