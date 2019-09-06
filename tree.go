@@ -3,7 +3,6 @@
 package exfat
 
 import (
-	"reflect"
 	"sort"
 	"strings"
 
@@ -201,12 +200,7 @@ func NewTree(er *ExfatReader) *Tree {
 func (tree *Tree) loadDirectory(clusterNumber uint32, node *TreeNode) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -241,12 +235,7 @@ func (tree *Tree) loadDirectory(clusterNumber uint32, node *TreeNode) (err error
 func (tree *Tree) Load() (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -264,12 +253,7 @@ func (tree *Tree) Load() (err error) {
 func (tree *Tree) Lookup(pathParts []string) (node *TreeNode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -303,12 +287,7 @@ type TreeVisitorFunc func(pathParts []string, node *TreeNode) (err error)
 func (tree *Tree) Visit(cb TreeVisitorFunc) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -325,12 +304,7 @@ func (tree *Tree) Visit(cb TreeVisitorFunc) (err error) {
 func (tree *Tree) visit(pathParts []string, node *TreeNode, cb TreeVisitorFunc) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -382,12 +356,7 @@ func (tree *Tree) visit(pathParts []string, node *TreeNode, cb TreeVisitorFunc) 
 func (tree *Tree) List() (files []string, nodes map[string]*TreeNode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 

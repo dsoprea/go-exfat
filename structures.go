@@ -54,12 +54,7 @@ func NewExfatReader(rs io.ReadSeeker) *ExfatReader {
 func (er *ExfatReader) parseN(byteCount int, x interface{}) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -419,12 +414,7 @@ func (bsh BootSectorHeader) String() string {
 func (er *ExfatReader) readBootSectorHead() (bsh BootSectorHeader, sectorSize uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -464,12 +454,7 @@ type ExtendedBootCode []byte
 func (er *ExfatReader) readExtendedBootSector(sectorSize uint32) (extendedBootCode ExtendedBootCode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -507,12 +492,7 @@ func (er *ExfatReader) readExtendedBootSector(sectorSize uint32) (extendedBootCo
 func (er *ExfatReader) readExtendedBootSectors(sectorSize uint32) (extendedBootCodeList [mainExtendedBootSectorCount]ExtendedBootCode, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -539,12 +519,7 @@ type OemParameters struct {
 func (er *ExfatReader) readOemParameters(sectorSize uint32) (oemParameters OemParameters, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -565,12 +540,7 @@ func (er *ExfatReader) readOemParameters(sectorSize uint32) (oemParameters OemPa
 func (er *ExfatReader) readMainReserved(sectorSize uint32) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -589,12 +559,7 @@ func (er *ExfatReader) readMainReserved(sectorSize uint32) (err error) {
 func (er *ExfatReader) readMainBootChecksum(sectorSize uint32) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -659,12 +624,7 @@ func (er *ExfatReader) assertAlignedToSector() {
 func (er *ExfatReader) parseBootRegion() (br bootRegion, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -697,12 +657,7 @@ func (er *ExfatReader) parseBootRegion() (br bootRegion, err error) {
 func (er *ExfatReader) selectBootRegion(bootRegionMain, bootRegionBackup bootRegion) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -737,12 +692,7 @@ type Fat []MappedCluster
 func (er *ExfatReader) parseFat() (fat Fat, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -824,12 +774,7 @@ func (er *ExfatReader) parseFat() (fat Fat, err error) {
 func (er *ExfatReader) parseFats() (fats []Fat, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -914,12 +859,7 @@ type ClusterVisitorFunc func(ec *ExfatCluster) (doContinue bool, err error)
 func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb ClusterVisitorFunc, useFat bool) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -981,12 +921,7 @@ func (er *ExfatReader) EnumerateClusters(startingClusterNumber uint32, cb Cluste
 func (er *ExfatReader) checkClusterHeapOffset() (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -1022,12 +957,7 @@ func (er *ExfatReader) checkClusterHeapOffset() (err error) {
 func (er *ExfatReader) Parse() (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -1078,12 +1008,7 @@ func (er *ExfatReader) Parse() (err error) {
 func (er *ExfatReader) WriteFromClusterChain(firstClusterNumber uint32, dataSize uint64, useFat bool, w io.Writer) (visitedClusters, visitedSectors []uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -1213,12 +1138,7 @@ func (ec *ExfatCluster) ClusterNumber() uint32 {
 func (ec *ExfatCluster) GetSectorByIndex(sectorIndex uint32) (data []byte, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -1252,12 +1172,7 @@ type SectorVisitorFunc func(sectorNumber uint32, data []byte) (bool, error)
 func (ec *ExfatCluster) EnumerateSectors(cb SectorVisitorFunc) (err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 

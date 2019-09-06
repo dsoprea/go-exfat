@@ -768,12 +768,7 @@ func (ExfatVendorAllocationDirectoryEntry) TypeName() string {
 func parseDirectoryEntry(entryType EntryType, directoryEntryData []byte) (parsed DirectoryEntry, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 

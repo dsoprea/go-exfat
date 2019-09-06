@@ -41,12 +41,7 @@ type DirectoryEntryVisitorFunc func(primaryEntry DirectoryEntry, secondaryEntrie
 func (en *ExfatNavigator) EnumerateDirectoryEntries(cb DirectoryEntryVisitorFunc) (visitedClusters, visitedSectors []uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
@@ -344,12 +339,7 @@ func (dei DirectoryEntryIndex) FindIndexedFileStreamExtensionDirectoryEntry(file
 func (en *ExfatNavigator) IndexDirectoryEntries() (index DirectoryEntryIndex, visitedClusters, visitedSectors []uint32, err error) {
 	defer func() {
 		if errRaw := recover(); errRaw != nil {
-			var ok bool
-			if err, ok = errRaw.(error); ok == true {
-				err = log.Wrap(err)
-			} else {
-				err = log.Errorf("Error not an error: [%s] [%v]", reflect.TypeOf(err).Name(), err)
-			}
+			err = log.Wrap(errRaw.(error))
 		}
 	}()
 
